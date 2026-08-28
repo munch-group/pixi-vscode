@@ -1,0 +1,105 @@
+{
+    "name": "pixi-code",
+    "displayName": "Pixi Code",
+    "description": "Pixi support for the Python Environments extension",
+    "icon": "assets/icon.png",
+    "license": "MIT",
+    "version": "0.2.0",
+    "homepage": "https://github.com/renan-r-santos/pixi-code",
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/renan-r-santos/pixi-code"
+    },
+    "bugs": {
+        "url": "https://github.com/renan-r-santos/pixi-code/issues"
+    },
+    "keywords": [
+        "pixi",
+        "vscode",
+        "python",
+        "conda"
+    ],
+    "engines": {
+        "vscode": "^1.118.0"
+    },
+    "categories": [
+        "Data Science",
+        "Programming Languages"
+    ],
+    "activationEvents": [
+        "onLanguage:python",
+        "workspaceContains:**/pixi.toml",
+        "workspaceContains:**/pyproject.toml"
+    ],
+    "publisher": "renan-r-santos",
+    "extensionDependencies": [
+        "ms-python.vscode-python-envs"
+    ],
+    "main": "./dist/extension.js",
+    "contributes": {
+        "configurationDefaults": {
+            "python-envs.workspaceSearchPaths": [
+                ".venv",
+                "*/.venv",
+                ".pixi",
+                "*/.pixi"
+            ]
+        },
+        "configuration": {
+            "title": "Pixi",
+            "properties": {
+                "pixi-code.pixiExecutable": {
+                    "type": "string",
+                    "default": "",
+                    "description": "Path to the Pixi executable. Leave empty to use auto-discovery.",
+                    "scope": "machine-overridable"
+                }
+            }
+        },
+        "icons": {
+            "prefix-dev": {
+                "description": "Prefix Logo",
+                "default": {
+                    "fontPath": "./assets/prefix-dev.woff",
+                    "fontCharacter": "\\E800"
+                }
+            }
+        }
+    },
+    "scripts": {
+        "vscode:prepublish": "npm run package",
+        "compile": "webpack",
+        "watch": "webpack --watch",
+        "package": "webpack --mode production --devtool hidden-source-map",
+        "compile-tests": "tsc -p . --outDir out",
+        "watch-tests": "tsc -p . -w --outDir out",
+        "pretest": "npm run compile-tests && npm run compile && npm run lint",
+        "lint": "eslint src",
+        "format": "prettier --write .",
+        "format:check": "prettier --check ."
+    },
+    "devDependencies": {
+        "@types/fs-extra": "^11.0.4",
+        "@types/node": "24.x",
+        "@types/vscode": "^1.118.0",
+        "@types/which": "^3.0.4",
+        "@typescript-eslint/eslint-plugin": "^8.59.1",
+        "@typescript-eslint/parser": "^8.59.1",
+        "eslint": "^10.2.1",
+        "eslint-plugin-simple-import-sort": "^13.0.0",
+        "eslint-plugin-unused-imports": "^4.4.1",
+        "prettier": "^3.8.3",
+        "ts-loader": "^9.5.7",
+        "typescript": "^6.0.3",
+        "webpack": "^5.106.2",
+        "webpack-cli": "^7.0.2"
+    },
+    "dependencies": {
+        "@types/semver": "^7.7.1",
+        "@vscode/python-environments": "^1.0.0",
+        "fast-glob": "^3.3.3",
+        "fs-extra": "^11.3.4",
+        "semver": "^7.7.4",
+        "which": "^6.0.1"
+    }
+}

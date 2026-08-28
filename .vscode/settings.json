@@ -1,0 +1,17 @@
+{
+    "editor.formatOnSave": true,
+    "editor.defaultFormatter": "esbenp.prettier-vscode",
+    "editor.codeActionsOnSave": {
+        "source.fixAll.eslint": "explicit"
+    },
+    "files.exclude": {
+        "out": false,
+        "dist": false
+    },
+    // Turn off tsc task auto detection since we have the necessary tasks as npm scripts
+    "js/ts.tsc.autoDetect": "off",
+    "search.exclude": {
+        "out": true,
+        "dist": true
+    }
+}
