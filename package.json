@@ -1,21 +1,22 @@
 {
-    "name": "pixi-code",
-    "displayName": "Pixi Code",
-    "description": "Pixi support for the Python Environments extension",
+    "name": "pixi-vscode",
+    "displayName": "Pixi VSCode",
+    "description": "Pixi support for Python and Jupyter in VS Code, via the Python Environments extension",
     "icon": "assets/icon.png",
     "license": "MIT",
-    "version": "0.2.0",
-    "homepage": "https://github.com/renan-r-santos/pixi-code",
+    "version": "0.1.0",
+    "homepage": "https://github.com/munch-group/pixi-vscode",
     "repository": {
         "type": "git",
-        "url": "https://github.com/renan-r-santos/pixi-code"
+        "url": "https://github.com/munch-group/pixi-vscode"
     },
     "bugs": {
-        "url": "https://github.com/renan-r-santos/pixi-code/issues"
+        "url": "https://github.com/munch-group/pixi-vscode/issues"
     },
     "keywords": [
         "pixi",
         "vscode",
+        "jupyter",
         "python",
         "conda"
     ],
@@ -31,7 +32,7 @@
         "workspaceContains:**/pixi.toml",
         "workspaceContains:**/pyproject.toml"
     ],
-    "publisher": "renan-r-santos",
+    "publisher": "munch-group",
     "extensionDependencies": [
         "ms-python.vscode-python-envs"
     ],
@@ -48,7 +49,7 @@
         "configuration": {
             "title": "Pixi",
             "properties": {
-                "pixi-code.pixiExecutable": {
+                "pixi-vscode.pixiExecutable": {
                     "type": "string",
                     "default": "",
                     "description": "Path to the Pixi executable. Leave empty to use auto-discovery.",

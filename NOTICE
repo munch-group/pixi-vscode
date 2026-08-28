@@ -1,0 +1,31 @@
+# Attribution
+
+Pixi VSCode (`munch-group/pixi-vscode`) is a fork of **Pixi Code**:
+
+- Project: https://github.com/renan-r-santos/pixi-code
+- Author: Renan Santos (https://github.com/renan-r-santos)
+- License: MIT
+- Forked from: commit `996c368` (release `v0.2.0`)
+
+The entire initial codebase was written by Renan Santos and is imported
+unmodified in the first commit of this repository, so the provenance of every
+subsequent change is visible in `git log`. All credit for the original design
+and implementation belongs to the upstream author.
+
+The upstream repository is configured as the `upstream` git remote:
+
+```bash
+git fetch upstream
+git diff HEAD upstream/main -- src/
+```
+
+## Third-party assets
+
+- `assets/prefix-dev.woff` and `assets/icon.png` originate from the upstream
+  project and depict the Pixi / prefix.dev logo, a trademark of prefix.dev.
+
+## Other included code
+
+- `src/common/logging.ts` is derived from Microsoft's VS Code Python extension
+  (Copyright (c) Microsoft Corporation, MIT License), as noted in the file
+  header.

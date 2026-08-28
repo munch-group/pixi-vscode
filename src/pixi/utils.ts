@@ -23,7 +23,7 @@ async function findPixi(): Promise<string | undefined> {
 }
 
 export async function getPixi(): Promise<string> {
-    const config = workspace.getConfiguration('pixi-code');
+    const config = workspace.getConfiguration('pixi-vscode');
     const value = config.get<string>('pixiExecutable');
 
     if (value) {
@@ -33,7 +33,7 @@ export async function getPixi(): Promise<string> {
     const pixiPath = await findPixi();
     if (!pixiPath) {
         const errorMsg =
-            'Pixi executable not found. Please install Pixi or set "pixi-code.pixiExecutable" in your settings.';
+            'Pixi executable not found. Please install Pixi or set "pixi-vscode.pixiExecutable" in your settings.';
         window.showErrorMessage(errorMsg);
         throw new Error(errorMsg);
     }
