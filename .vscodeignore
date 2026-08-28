@@ -21,3 +21,4 @@ vsc-extension-quickstart.md
 ms-python_vscode-python-envs_issue.md
 CONTRIBUTING.md
 RELEASE.md
+scripts/**
