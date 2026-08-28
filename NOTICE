@@ -31,8 +31,13 @@ git diff HEAD upstream/main -- src/
 
 ## Third-party assets
 
-- `assets/prefix-dev.woff` and `assets/icon.png` originate from the upstream
-  project and depict the Pixi / prefix.dev logo, a trademark of prefix.dev.
+- `assets/prefix-dev.woff` originates from the upstream project and renders the
+  Pixi / prefix.dev logo, a trademark of prefix.dev. It is used only as the
+  glyph marking Pixi environments in the status bar and environment picker —
+  naming the thing it denotes.
+- The extension's own icon, `images/icon.png`, is munch-group's. Upstream's
+  `assets/icon.png` was removed rather than republished under a different
+  publisher.
 
 ## Other included code
 

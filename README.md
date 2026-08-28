@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="./assets/icon.png" alt="Pixi VSCode" width="220" height="220">
+<img src="./images/icon.png" alt="Pixi VSCode" width="200" height="200">
 
 </div>
 
