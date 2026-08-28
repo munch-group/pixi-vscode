@@ -5,3 +5,6 @@ dist
 out
 node_modules
 package-lock.json
+
+# Generated lockfile; reformatting it would only create churn.
+pixi.lock

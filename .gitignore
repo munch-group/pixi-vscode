@@ -147,3 +147,6 @@ out/
 dist/
 *.vsix
 .vscode-test/
+
+# Pixi environment for the development tasks in pixi.toml
+.pixi/

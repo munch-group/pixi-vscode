@@ -17,6 +17,12 @@ vsc-extension-quickstart.md
 **/.vscode-test.*
 .claude
 
+# The development environment and its manifest. Without this vsce packages the
+# whole .pixi tree into the extension.
+.pixi/**
+pixi.toml
+pixi.lock
+
 # Internal working notes, not shipped to users.
 ms-python_vscode-python-envs_issue.md
 CONTRIBUTING.md
