@@ -1,7 +1,7 @@
 {
     "name": "pixi-vscode",
     "displayName": "Pixi VSCode",
-    "description": "Pixi support for Python and Jupyter in VS Code, via the Python Environments extension",
+    "description": "Pixi support for Python and Jupyter in VS Code, without the kernel stall",
     "icon": "assets/icon.png",
     "license": "MIT",
     "version": "0.1.0",
@@ -29,31 +29,101 @@
     ],
     "activationEvents": [
         "onLanguage:python",
+        "onNotebook:jupyter-notebook",
         "workspaceContains:**/pixi.toml",
         "workspaceContains:**/pyproject.toml"
     ],
     "publisher": "munch-group",
     "extensionDependencies": [
-        "ms-python.vscode-python-envs"
+        "ms-python.python"
     ],
     "main": "./dist/extension.js",
     "contributes": {
-        "configurationDefaults": {
-            "python-envs.workspaceSearchPaths": [
-                ".venv",
-                "*/.venv",
-                ".pixi",
-                "*/.pixi"
-            ]
-        },
+        "commands": [
+            {
+                "command": "pixi-vscode.selectEnvironment",
+                "title": "Select Environment",
+                "category": "Pixi",
+                "icon": "$(prefix-dev)"
+            },
+            {
+                "command": "pixi-vscode.refreshEnvironments",
+                "title": "Refresh Environments",
+                "category": "Pixi",
+                "icon": "$(refresh)"
+            },
+            {
+                "command": "pixi-vscode.repairEnvironments",
+                "title": "Repair Environments",
+                "category": "Pixi"
+            },
+            {
+                "command": "pixi-vscode.runDiagnostics",
+                "title": "Run Diagnostics",
+                "category": "Pixi"
+            },
+            {
+                "command": "pixi-vscode.showLogs",
+                "title": "Show Logs",
+                "category": "Pixi"
+            }
+        ],
         "configuration": {
             "title": "Pixi",
             "properties": {
                 "pixi-vscode.pixiExecutable": {
                     "type": "string",
                     "default": "",
-                    "description": "Path to the Pixi executable. Leave empty to use auto-discovery.",
+                    "markdownDescription": "Path to the Pixi executable. Leave empty to use auto-discovery.",
                     "scope": "machine-overridable"
+                },
+                "pixi-vscode.searchDepth": {
+                    "type": "integer",
+                    "default": 2,
+                    "minimum": 0,
+                    "maximum": 8,
+                    "markdownDescription": "How many directory levels below each workspace folder to search for `pixi.toml` / `pyproject.toml` manifests.",
+                    "scope": "resource"
+                },
+                "pixi-vscode.autoSelectEnvironment": {
+                    "type": "boolean",
+                    "default": true,
+                    "markdownDescription": "Automatically select the Pixi environment as the Python interpreter (and therefore the Jupyter kernel) when a workspace folder contains a Pixi project.",
+                    "scope": "resource"
+                },
+                "pixi-vscode.defaultEnvironmentName": {
+                    "type": "string",
+                    "default": "default",
+                    "markdownDescription": "Name of the Pixi environment to select automatically when no choice has been made yet.",
+                    "scope": "resource"
+                },
+                "pixi-vscode.repairEnvironments": {
+                    "type": "string",
+                    "enum": [
+                        "prompt",
+                        "auto",
+                        "off"
+                    ],
+                    "default": "prompt",
+                    "markdownDescription": "What to do when an environment is missing its `conda-meta/pixi` marker, which makes VS Code misidentify it as conda and stalls Jupyter kernel starts by 30 seconds.\n\n- `prompt`: offer to run `pixi install`\n- `auto`: repair silently\n- `off`: ignore",
+                    "scope": "resource"
+                },
+                "pixi-vscode.configureEnvironmentsExtension": {
+                    "type": "string",
+                    "enum": [
+                        "prompt",
+                        "auto",
+                        "off"
+                    ],
+                    "default": "prompt",
+                    "markdownDescription": "When `ms-python.vscode-python-envs` is installed, it takes over terminal activation from the Python extension unless `python.useEnvironmentsExtension` is *explicitly* set to `false`. This controls whether to offer writing that setting.\n\n- `prompt`: offer once per workspace\n- `auto`: write it without asking\n- `off`: leave settings alone",
+                    "scope": "resource"
+                },
+                "pixi-vscode.showStatusBarItem": {
+                    "type": "boolean",
+                    "default": true,
+                    "markdownDescription": "Show the active Pixi environment in the status bar.",
+                    "scope": "window"
                 }
             }
         },
@@ -82,6 +152,7 @@
     "devDependencies": {
         "@types/fs-extra": "^11.0.4",
         "@types/node": "24.x",
+        "@types/semver": "^7.7.1",
         "@types/vscode": "^1.118.0",
         "@types/which": "^3.0.4",
         "@typescript-eslint/eslint-plugin": "^8.59.1",
@@ -96,8 +167,6 @@
         "webpack-cli": "^7.0.2"
     },
     "dependencies": {
-        "@types/semver": "^7.7.1",
-        "@vscode/python-environments": "^1.0.0",
         "fast-glob": "^3.3.3",
         "fs-extra": "^11.3.4",
         "semver": "^7.7.4",

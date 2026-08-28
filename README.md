@@ -6,113 +6,130 @@
 
 # Pixi VSCode
 
-VS Code extension that integrates [Pixi](https://pixi.sh) environments with the [Python Environments
-extension](https://github.com/microsoft/vscode-python-environments), so that Pixi environments are picked up
-automatically for Python files, terminals, debugging and Jupyter notebooks.
+Makes VS Code use the Python interpreter and Jupyter kernel from your project's `.pixi`
+environment — automatically, and without the 30-second kernel stall.
 
-> **Credit.** This extension is a fork of [**Pixi Code**](https://github.com/renan-r-santos/pixi-code) by [Renan
+> **Credit.** This extension began as a fork of [**Pixi Code**](https://github.com/renan-r-santos/pixi-code) by [Renan
 > Santos](https://github.com/renan-r-santos), MIT licensed. The first commit in this repository is an unmodified import
-> of upstream `v0.2.0`; everything after it is our own. See [NOTICE](./NOTICE) for full attribution.
->
-> If you are not a member of the munch-group teaching setup, you almost certainly want the original extension instead:
-> [`renan-r-santos.pixi-code`](https://marketplace.visualstudio.com/items?itemName=renan-r-santos.pixi-code).
+> of upstream `v0.2.0`; the architecture has since diverged (see below). Several utility modules are still upstream's.
+> See [NOTICE](./NOTICE) for full attribution.
 
-## Overview
+## Why this exists
 
-This extension implements the `EnvironmentManager` and `PackageManager` interfaces for the [Python Environments
-extension](https://github.com/microsoft/vscode-python-environments), allowing Pixi environments to appear alongside
-conda, venv, and other Python environments in VS Code.
+Upstream `pixi-code` implements an `EnvironmentManager` for the [Python Environments
+extension](https://github.com/microsoft/vscode-python-environments) and therefore depends on it. That extension is the
+subject of a long-standing bug that makes **every Jupyter kernel start and restart in a Pixi project block for exactly
+30 seconds**, leaking a pair of orphaned processes each time.
 
-It exists as a separate fork so that we can control exactly how Pixi, Python and Jupyter interact in VS Code for
-students, without waiting on upstream.
+Investigating it turned up a different root cause than the one reported upstream, and a much smaller fix. See
+[`ms-python_vscode-python-envs_issue.md`](./ms-python_vscode-python-envs_issue.md) for the full write-up.
 
-## Features
+### The 30-second stall, briefly
 
-- Automatic discovery of Python environments created with Pixi
-- Automatic interpreter selection when running and debugging Python code
-- Support for Pixi features (dev, test, lint, etc.) as separate selectable environments
-- Terminal activation
-- Persistent environment selection per project
-- Package discovery
+`pixi install` writes a marker file at `<prefix>/conda-meta/pixi`. Environments created by older Pixi versions only have
+`conda-meta/pixi_env_prefix`. That difference matters more than it looks:
+
+| Check                  | Reads                  | Marker-less env         |
+| ---------------------- | ---------------------- | ----------------------- |
+| `pet` (native locator) | `conda-meta/pixi` only | classifies it **conda** |
+| `isPixiEnvironment()`  | **either** marker      | classifies it **pixi**  |
+
+So a marker-less environment is simultaneously "conda" for interpreter resolution and "pixi" for terminal activation.
+The Python extension therefore skips its fast `pixi run` path, finds no conda to fall back to, and ends up running
+`pixi shell` — an interactive subshell — to capture environment variables non-interactively. It never returns, and is
+killed after 30 s.
+
+**The fix is to run `pixi install` so the marker exists.** This extension detects the condition and offers to do it.
+
+## What it does
+
+- **Discovers** Pixi environments from `pixi.toml` and Pixi-enabled `pyproject.toml` manifests
+- **Selects** the environment as the Python interpreter — Jupyter derives its kernel from the same source, so notebooks
+  follow automatically
+- **Detects and repairs** environments missing `conda-meta/pixi`, which is what causes the stall
+- **Reports** the whole picture via `Pixi: Run Diagnostics`, including any orphaned `pixi shell` processes
+- **Never leaks processes**: subprocesses run with stdin closed and are killed by process _group_ on timeout
+
+It talks directly to the Python extension's stable API, so **the Python Environments extension is not required**.
 
 ## Requirements
 
-- [Pixi](https://pixi.sh) 0.53.0 or newer, installed on your system
-- Python Environments extension (`ms-python.vscode-python-envs`) — installed automatically as a dependency
+- [Pixi](https://pixi.sh) 0.53.0 or newer
+- Python extension (`ms-python.python`) — installed automatically as a dependency
+- Jupyter extension (`ms-toolsai.jupyter`) for notebooks
 
-## Installation
+## Commands
 
-1. Install Pixi on your system
-2. Install this extension (see [Building from source](#building-from-source) until it is published)
-3. Open a project with a `pixi.toml` or `pyproject.toml` file
+| Command                      | Description                                             |
+| ---------------------------- | ------------------------------------------------------- |
+| `Pixi: Select Environment`   | Pick the environment for a workspace folder             |
+| `Pixi: Refresh Environments` | Re-scan for Pixi projects                               |
+| `Pixi: Repair Environments`  | Run `pixi install` on environments missing their marker |
+| `Pixi: Run Diagnostics`      | Write a full support report to the output channel       |
+| `Pixi: Show Logs`            | Open the Pixi output channel                            |
 
-The extension will automatically discover Pixi environments and register them with the Python Environments system.
+## Settings
 
-> **Do not install this alongside `renan-r-santos.pixi-code`.** Both register a Pixi environment manager, so you would
-> get every environment listed twice in the picker. The extension IDs differ, so VS Code will happily install both —
-> pick one.
+| Setting                                      | Default     | Description                                                           |
+| -------------------------------------------- | ----------- | --------------------------------------------------------------------- |
+| `pixi-vscode.pixiExecutable`                 | `""`        | Path to Pixi. Empty means auto-discovery.                             |
+| `pixi-vscode.searchDepth`                    | `2`         | Directory levels below each workspace folder to search for manifests. |
+| `pixi-vscode.autoSelectEnvironment`          | `true`      | Select the Pixi environment automatically.                            |
+| `pixi-vscode.defaultEnvironmentName`         | `"default"` | Which environment to pick when nothing is chosen yet.                 |
+| `pixi-vscode.repairEnvironments`             | `"prompt"`  | `prompt` / `auto` / `off` for marker repair.                          |
+| `pixi-vscode.configureEnvironmentsExtension` | `"prompt"`  | Whether to offer setting `python.useEnvironmentsExtension`.           |
+| `pixi-vscode.showStatusBarItem`              | `true`      | Show the active environment in the status bar.                        |
 
-## Extension settings
+### About `python.useEnvironmentsExtension`
 
-- `pixi-vscode.pixiExecutable`: Path to the Pixi executable. Leave empty to use auto-discovery (default).
+If the Python Environments extension is installed, it takes over terminal activation from the Python extension — but it
+has no Pixi support of its own. The Python extension reads that setting with `inspect()` and honours **only an
+explicitly written value**; its declared default of `false` is never consulted. So the setting has to physically exist
+in `settings.json` to have any effect. This extension offers to write it.
 
-Discovery also honours the Python Environments extension's own settings, `python-envs.workspaceSearchPaths` and
-`python-envs.globalSearchPaths`.
+## Automatic environment selection
+
+Auto-selection deliberately does not fight you: if the active interpreter is already a Pixi environment **from the same
+project**, your choice is left alone. It only steps in when the interpreter is something else (a global Python, a venv,
+or nothing). Set `pixi-vscode.autoSelectEnvironment` to `false` to disable it entirely.
 
 ## Limitations
 
-- **Environment creation and deletion**
-- **Adding, updating and removing packages**
+Creating and deleting environments, and adding or removing packages, are intentionally not supported. Pixi's declarative
+manifest works best when edited directly or driven from the CLI.
 
-These operations are intentionally not supported as Pixi's declarative manifest approach works best through direct CLI
-interaction or editing of the `pixi.toml` or `pyproject.toml` files directly.
+## Troubleshooting
 
-## Building from source
+Run **`Pixi: Run Diagnostics`** first — it reports the Pixi version, every discovered environment with its marker state
+and expected classification, which extension owns terminal activation, and any leaked `pixi shell` processes.
+
+**Kernels still take 30 seconds.** Check the diagnostics report for `expected classification: Conda (WRONG …)`. Run
+`Pixi: Repair Environments`, then reload the window so the Python extension re-scans.
+
+**No environments discovered.** Verify a `pixi.toml` (or a `pyproject.toml` with a `[tool.pixi]` section) exists, run
+`pixi install`, and raise `pixi-vscode.searchDepth` if the project is nested deeply.
+
+**Pixi executable not found.** Ensure Pixi is on `PATH`, or set `pixi-vscode.pixiExecutable`.
+
+## Development
 
 ```bash
 npm install
 npm run compile        # development build into dist/
 npx vsce package       # produces pixi-vscode-<version>.vsix
-code --install-extension pixi-vscode-<version>.vsix
 ```
 
-Press `F5` in VS Code to launch an Extension Development Host with the extension loaded.
-
-See [CONTRIBUTING.md](./CONTRIBUTING.md) for the full development workflow.
+Press `F5` to launch an Extension Development Host. See [CONTRIBUTING.md](./CONTRIBUTING.md).
 
 ## Tracking upstream
 
-The upstream project is configured as the `upstream` git remote:
+Upstream is configured as the `upstream` git remote. Commit 1 of this repository is a pristine copy of upstream
+`v0.2.0`, so its changes can be diffed without archaeology:
 
 ```bash
 git fetch upstream
 git diff HEAD upstream/main -- src/
 ```
-
-Because commit 1 of this repository is a pristine copy of upstream, upstream changes can be reviewed and cherry-picked
-without archaeology.
-
-## Troubleshooting
-
-### Logs
-
-Check the "Pixi Environment Manager" output channel:
-
-1. View → Output
-2. Select "Pixi Environment Manager" from dropdown
-
-### Common issues
-
-**Pixi executable not found**
-
-- Ensure Pixi is installed and in PATH
-- Set `pixi-vscode.pixiExecutable` setting if needed
-
-**No environments discovered**
-
-- Verify `pixi.toml` or `pyproject.toml` exists in project root
-- Run `pixi install` to ensure environments are set up
-- Verify the environment actually contains Python — environments without a `python` package are skipped
 
 ## License
 

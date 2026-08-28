@@ -12,6 +12,16 @@ unmodified in the first commit of this repository, so the provenance of every
 subsequent change is visible in `git log`. All credit for the original design
 and implementation belongs to the upstream author.
 
+The architecture has since diverged: this extension no longer implements the
+Python Environments extension's `EnvironmentManager` interface, and drives the
+Python extension's own API instead. These modules remain substantially
+upstream's work:
+
+- `src/common/deferred.ts`
+- `src/common/findPython.ts`
+- `src/common/persistentState.ts`
+- `assets/`
+
 The upstream repository is configured as the `upstream` git remote:
 
 ```bash

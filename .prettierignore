@@ -1,0 +1,7 @@
+# Working notes, not project documentation — keep them exactly as written.
+ms-python_vscode-python-envs_issue.md
+
+dist
+out
+node_modules
+package-lock.json

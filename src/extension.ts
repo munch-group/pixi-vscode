@@ -1,48 +1,89 @@
 import semver from 'semver';
-import { ExtensionContext, window } from 'vscode';
+import { commands, ExtensionContext, window, workspace } from 'vscode';
 
-import { registerLogger } from './common/logging';
+import { registerLogger, traceError, traceInfo } from './common/logging';
 import { setPersistentState } from './common/persistentState';
-import { PixiEnvManager } from './pixi/envManager';
-import { PixiPackageManager } from './pixi/projectManager';
-import { getPixi, runPixi } from './pixi/utils';
-import { getEnvExtApi } from './pythonEnvsApi';
+import { PixiEnvironmentService } from './environmentService';
+import { getPixiVersion, MINIMUM_PIXI_VERSION, PixiNotFoundError } from './pixi/cli';
+import { getPythonApi } from './python/api';
+import { runDiagnostics } from './ui/diagnostics';
+import { promptForEnvironment } from './ui/quickPick';
+import { PixiStatusBar } from './ui/statusBar';
 
-const MINIMUM_PIXI_VERSION = '0.53.0';
-
-export async function activate(context: ExtensionContext) {
-    const api = await getEnvExtApi();
-
-    const log = window.createOutputChannel('Pixi Environment Manager', { log: true });
+export async function activate(context: ExtensionContext): Promise<void> {
+    const log = window.createOutputChannel('Pixi', { log: true });
     context.subscriptions.push(log, registerLogger(log));
 
-    // Validate Pixi installation
-    const stdout = await runPixi(['--version']);
-    const versionMatch = stdout.trim().match(/^pixi (\d+\.\d+\.\d+)/);
-    if (!versionMatch) {
-        const errorMsg = `Found invalid Pixi binary at ${await getPixi()}.`;
-        window.showErrorMessage(errorMsg);
-        throw new Error(errorMsg);
-    }
-
-    const currentVersion = versionMatch[1];
-
-    // Check if the current version meets the minimum requirement using semver
-    if (!semver.gte(currentVersion, MINIMUM_PIXI_VERSION)) {
-        const errorMsg =
-            `Pixi version ${currentVersion} is too old. ` +
-            `This extension requires Pixi version ${MINIMUM_PIXI_VERSION} or newer. ` +
-            `Please update Pixi by running: pixi self-update`;
-        window.showErrorMessage(errorMsg);
-        throw new Error(errorMsg);
-    }
-
-    // Setup the persistent state for the extension.
     setPersistentState(context);
 
-    const manager = new PixiEnvManager(api, log);
-    context.subscriptions.push(api.registerEnvironmentManager(manager));
+    const service = new PixiEnvironmentService();
+    const statusBar = new PixiStatusBar(service);
+    context.subscriptions.push(service, statusBar);
 
-    const packageManager = new PixiPackageManager(api, log);
-    context.subscriptions.push(api.registerPackageManager(packageManager));
+    // Commands are registered before any await so they work even if the
+    // environment check below fails — "Run Diagnostics" is most useful exactly
+    // when something is wrong.
+    context.subscriptions.push(
+        commands.registerCommand('pixi-vscode.selectEnvironment', () => promptForEnvironment(service)),
+        commands.registerCommand('pixi-vscode.refreshEnvironments', async () => {
+            await service.refresh();
+            await statusBar.update();
+        }),
+        commands.registerCommand('pixi-vscode.repairEnvironments', () => service.repairDegradedEnvironments(true)),
+        commands.registerCommand('pixi-vscode.runDiagnostics', () => runDiagnostics(service, log)),
+        commands.registerCommand('pixi-vscode.showLogs', () => log.show()),
+        workspace.onDidChangeWorkspaceFolders(() => void service.refresh()),
+    );
+
+    if (!(await checkPixiVersion())) {
+        return;
+    }
+
+    try {
+        await getPythonApi();
+    } catch (error) {
+        traceError('Python extension unavailable:', error);
+        window.showErrorMessage('The Python extension is required for Pixi environments to be used.');
+        return;
+    }
+
+    await service.refresh();
+    await service.repairDegradedEnvironments();
+    await service.autoSelect();
+    await service.offerToReclaimTerminalActivation();
+    await statusBar.update();
+}
+
+/**
+ * Reports a missing or too-old Pixi without throwing, so the extension stays
+ * loaded and its diagnostics command remains reachable.
+ */
+async function checkPixiVersion(): Promise<boolean> {
+    let version: string | undefined;
+    try {
+        version = await getPixiVersion();
+    } catch (error) {
+        if (error instanceof PixiNotFoundError) {
+            window.showWarningMessage(error.message);
+        } else {
+            traceError('Could not determine the Pixi version:', error);
+            window.showWarningMessage('Could not run Pixi. Run "Pixi: Run Diagnostics" for details.');
+        }
+        return false;
+    }
+
+    if (!version) {
+        window.showWarningMessage('Could not parse the Pixi version. Run "Pixi: Run Diagnostics" for details.');
+        return false;
+    }
+
+    if (!semver.gte(version, MINIMUM_PIXI_VERSION)) {
+        window.showWarningMessage(
+            `Pixi ${version} is too old; ${MINIMUM_PIXI_VERSION} or newer is required. Run \`pixi self-update\`.`,
+        );
+        return false;
+    }
+
+    traceInfo(`Using Pixi ${version}`);
+    return true;
 }

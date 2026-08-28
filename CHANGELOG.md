@@ -9,6 +9,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Initial release of the munch-group fork.
 
+### Fixed
+
+- **Jupyter kernel starts no longer stall for 30 seconds.** Environments missing
+  `conda-meta/pixi` are detected and repaired with `pixi install`. Without that marker the
+  native locator classifies a Pixi prefix as conda, so the Python extension skips its fast
+  `pixi run` path and falls back to running `pixi shell` non-interactively, which never
+  returns and is killed on a 30s timeout.
+- **No more leaked processes.** Subprocesses run with stdin closed, so anything that turns
+  interactive sees EOF and exits, and timeouts kill the whole process _group_ rather than
+  orphaning grandchildren.
+
+### Changed
+
+- **Dropped the dependency on `ms-python.vscode-python-envs`.** The extension now drives the
+  Python extension's stable API directly; Jupyter follows from the same source. The
+  `EnvironmentManager` / `PackageManager` implementations that existed only to serve the
+  environments extension were removed.
+- Subprocesses are spawned without a shell, so arguments no longer need manual quoting.
+- Python versions are read from `conda-meta` instead of shelling out to `pixi list` per
+  environment.
+
+### Added
+
+- `Pixi: Run Diagnostics` — reports marker state and expected classification per environment,
+  which extension owns terminal activation, and any orphaned `pixi shell` processes.
+- `Pixi: Repair Environments`, `Pixi: Select Environment`, `Pixi: Refresh Environments`.
+- Status bar item showing the active environment, with a warning when one is degraded.
+- An offer to write `python.useEnvironmentsExtension: false`, which is the only way to take
+  terminal activation back from the environments extension (the Python extension reads it
+  with `inspect()` and ignores the default).
+
+### Fork housekeeping
+
 - Forked from [pixi-code](https://github.com/renan-r-santos/pixi-code) `v0.2.0` (commit `996c368`) by Renan Santos
 - Renamed extension to `munch-group.pixi-vscode` with its own environment/package manager ID, so it does not collide
   with the upstream extension

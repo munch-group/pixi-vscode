@@ -1,5 +1,4 @@
-import { Package, PythonEnvironment } from '@vscode/python-environments';
-
+/** Shape of `pixi info --json`. */
 export interface PixiInfo {
     project_info?: {
         name: string;
@@ -11,13 +10,33 @@ export interface PixiInfo {
     }>;
 }
 
-export interface PixiPackage {
+/**
+ * Why an environment may not work correctly in VS Code.
+ *
+ * `missingPixiMarker` is the important one: it is the state that makes VS Code
+ * classify a Pixi prefix as conda and stall Jupyter kernel starts by 30s.
+ */
+export type EnvironmentHealth = 'healthy' | 'missingPixiMarker' | 'notInstalled' | 'noPython';
+
+export interface PixiEnvironment {
+    /** Stable identity — the environment prefix. */
+    id: string;
+    /** Pixi environment name, e.g. `default` or `test`. */
     name: string;
-    version: string;
-    is_explicit: boolean;
+    /** Pixi project name from the manifest. */
+    projectName: string;
+    /** Absolute path to `pixi.toml` / `pyproject.toml`. */
+    manifestPath: string;
+    /** Directory containing the manifest. */
+    projectPath: string;
+    /** Absolute path to the environment prefix. */
+    prefix: string;
+    pythonPath?: string;
+    pythonVersion?: string;
+    health: EnvironmentHealth;
 }
 
-export interface PixiEnvironment extends PythonEnvironment {
-    pixiInfo: PixiInfo;
-    packages: Package[];
+export function displayName(env: PixiEnvironment): string {
+    const version = env.pythonVersion ? ` (${env.pythonVersion})` : '';
+    return `${env.projectName}:${env.name}${version}`;
 }
