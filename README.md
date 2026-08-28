@@ -82,10 +82,25 @@ It talks directly to the Python extension's stable API, so **the Python Environm
 
 ### About `python.useEnvironmentsExtension`
 
-If the Python Environments extension is installed, it takes over terminal activation from the Python extension — but it
-has no Pixi support of its own. The Python extension reads that setting with `inspect()` and honours **only an
-explicitly written value**; its declared default of `false` is never consulted. So the setting has to physically exist
-in `settings.json` to have any effect. This extension offers to write it.
+If the Python Environments extension is installed it takes over **environment discovery and terminal activation** from
+the Python extension, while having no Pixi support of its own. The result is that a Pixi environment is not found and
+the interpreter falls back to a system Python.
+
+This bites hardest on a **new VS Code profile**, which is what a new student has. The setting is tagged `onExP` — an
+experiment flag — so a fresh install can be enrolled with it switched on. Observed on a clean profile: this extension
+selects the Pixi interpreter, and 300ms later the environments extension replaces it with `/usr/local/bin/python3`.
+
+Writing an explicit `false` is the only thing that settles it, which is why `pixi-vscode.configureEnvironmentsExtension`
+defaults to `auto` rather than asking. Two details matter:
+
+- The two gates behave differently. Discovery is read with `get()`, so an experiment-supplied default counts. Terminal
+  activation is read with `inspect()`, which consults **only explicitly written values** — its declared default of
+  `false` is never honoured.
+- The Python extension reads the flag once and caches it for the session, so the setting does not take effect until the
+  window reloads. The extension offers the reload rather than leaving it half-applied.
+
+If you ship a course folder, putting `"python.useEnvironmentsExtension": false` in its `.vscode/settings.json` avoids
+the first-run reload entirely.
 
 ## Automatic environment selection
 

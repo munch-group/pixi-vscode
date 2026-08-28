@@ -115,8 +115,8 @@
                         "auto",
                         "off"
                     ],
-                    "default": "prompt",
-                    "markdownDescription": "When `ms-python.vscode-python-envs` is installed, it takes over terminal activation from the Python extension unless `python.useEnvironmentsExtension` is *explicitly* set to `false`. This controls whether to offer writing that setting.\n\n- `prompt`: offer once per workspace\n- `auto`: write it without asking\n- `off`: leave settings alone",
+                    "default": "auto",
+                    "markdownDescription": "Whether to write `python.useEnvironmentsExtension: false` when the Python Environments extension (`ms-python.vscode-python-envs`) is installed.\n\nThat extension takes over both environment discovery and terminal activation from the Python extension, but has no Pixi support of its own, so a Pixi environment is not found and the interpreter falls back to a system Python. The Python extension's own Pixi support works correctly, and this setting hands discovery back to it.\n\nIt matters most on a new VS Code profile: `python.useEnvironmentsExtension` is an experiment flag, so a fresh install can be enrolled with it switched on.\n\n- `auto`: write it to the workspace (default)\n- `prompt`: ask first\n- `off`: leave settings alone",
                     "scope": "window"
                 },
                 "pixi-vscode.showStatusBarItem": {

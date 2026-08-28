@@ -49,6 +49,10 @@ export async function activate(context: ExtensionContext): Promise<void> {
 
     await service.refresh();
     await service.autoSelect();
+    // The Python extension applies its own initial selection shortly after we
+    // do, and will overwrite ours with a system Python if its discovery has not
+    // finished. Hold our choice for a moment, then leave it alone for good.
+    context.subscriptions.push(await service.guardStartupSelection(15_000));
     await statusBar.update();
 
     // The remaining steps each await a notification the user may never answer,
@@ -58,7 +62,7 @@ export async function activate(context: ExtensionContext): Promise<void> {
         await service.repairDegradedEnvironments();
         // A repair changes which environments are usable, so re-select.
         await service.autoSelect();
-        await service.offerToReclaimTerminalActivation();
+        await service.ensureEnvironmentOwnership();
         await statusBar.update();
     })();
 }

@@ -41,6 +41,23 @@ export function isTerminalActivationDelegated(): boolean {
     return true;
 }
 
+/**
+ * Mirrors `useEnvExtension()` inside `ms-python.python`, which decides who owns
+ * environment discovery.
+ *
+ * Unlike the activation gate this reads the setting with `get()`, so a default
+ * supplied by VS Code's experimentation service counts. The setting is tagged
+ * `onExP`, which means a fresh profile can be enrolled with it switched on —
+ * and then the Python Environments extension, which has no Pixi support,
+ * resolves the interpreter and lands on a system Python.
+ */
+export function isDiscoveryDelegated(): boolean {
+    if (!isEnvsExtensionInstalled()) {
+        return false;
+    }
+    return workspace.getConfiguration('python').get<boolean>(SETTING, false) === true;
+}
+
 /** True when nobody has written the setting at any scope. */
 export function isSettingUnset(): boolean {
     const inspection = workspace.getConfiguration('python').inspect<boolean>(SETTING);

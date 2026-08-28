@@ -146,9 +146,24 @@ else
 fi
 
 echo "==> 5/7  installing extensions into a throwaway profile"
-USER_DATA="$SANDBOX/vscode-user"
+# VS Code opens a unix domain socket inside --user-data-dir, and those paths
+# are capped just above 103 characters by the OS. On macOS $TMPDIR is already
+# ~48 characters before anything of ours is appended, so a user-data-dir under
+# it overflows and VS Code exits with "listen EINVAL: invalid argument" having
+# printed nothing to the terminal and drawn no window. Keeping the profile
+# under /tmp with a short name buys back about forty characters.
+USER_DATA="$(mktemp -d /tmp/pxvsc.XXXXXXXX)"
 EXTENSIONS="$SANDBOX/vscode-extensions"
 mkdir -p "$USER_DATA" "$EXTENSIONS"
+
+# Fail loudly rather than repeat the silent exit this replaced.
+SOCKET_PATH="$USER_DATA/1.13-main.sock"
+if [ ${#SOCKET_PATH} -gt 100 ]; then
+    echo "error: the VS Code profile path is too long for its IPC socket:" >&2
+    echo "       $SOCKET_PATH (${#SOCKET_PATH} chars, limit ~103)" >&2
+    echo "       VS Code would exit silently. Set TMPDIR to something shorter." >&2
+    exit 1
+fi
 
 command -v code >/dev/null || {
     echo
@@ -206,7 +221,7 @@ PY_EXE="$PREFIX/bin/python"
 if [ "$LAUNCH_VSCODE" -eq 0 ]; then
     echo
     echo "Stopping before VS Code, as asked."
-    echo "Remove the sandbox with:  rm -rf $SANDBOX"
+    echo "Remove the sandbox with:  rm -rf $SANDBOX $USER_DATA"
     exit 0
 fi
 
@@ -263,14 +278,17 @@ Also worth a look while you are in there:
   - Output -> Python shows whether environment capture used 'pixi run' (fast)
     or 'pixi shell' (the stall).
 
-Remove the sandbox when you are done:  rm -rf $SANDBOX
+Remove the sandbox when you are done:  rm -rf $SANDBOX $USER_DATA
 
 EOF
 
-TRUST_FLAG=()
+# Spelled out twice rather than built as an array. macOS ships bash 3.2, where
+# expanding an empty array under `set -u` is an "unbound variable" error, so the
+# tidy version of this fails on exactly the platform the course targets.
 if [ "$TRUSTED" -eq 1 ]; then
-    TRUST_FLAG=(--disable-workspace-trust)
+    code --user-data-dir "$USER_DATA" --extensions-dir "$EXTENSIONS" \
+         --disable-workspace-trust --new-window "$FOLDER"
+else
+    code --user-data-dir "$USER_DATA" --extensions-dir "$EXTENSIONS" \
+         --new-window "$FOLDER"
 fi
-
-code --user-data-dir "$USER_DATA" --extensions-dir "$EXTENSIONS" \
-     "${TRUST_FLAG[@]}" --new-window "$FOLDER"

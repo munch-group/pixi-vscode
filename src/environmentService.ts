@@ -1,5 +1,6 @@
 import {
     CancellationToken,
+    commands,
     ConfigurationTarget,
     Disposable,
     EventEmitter,
@@ -12,13 +13,19 @@ import {
 
 import { traceError, traceInfo, traceVerbose, traceWarn } from './common/logging';
 import { getWorkspacePersistentState } from './common/persistentState';
-import { CONFIG_SECTION, EXTENSION_ID } from './common/utils';
+import { canonicalPath, CONFIG_SECTION, EXTENSION_ID } from './common/utils';
 import { pixiInstall } from './pixi/cli';
 import { discoverEnvironments } from './pixi/discovery';
 import { causesKernelStall } from './pixi/health';
 import { displayName, PixiEnvironment, qualifiedName } from './pixi/types';
-import { getActiveInterpreter, refreshInterpreters, setActiveInterpreter } from './python/api';
-import { isEnvsExtensionInstalled, isSettingUnset, reclaimTerminalActivation } from './python/envsExtension';
+import { getActiveInterpreter, getPythonApi, refreshInterpreters, setActiveInterpreter } from './python/api';
+import {
+    isDiscoveryDelegated,
+    isEnvsExtensionInstalled,
+    isSettingUnset,
+    isTerminalActivationDelegated,
+    reclaimTerminalActivation,
+} from './python/envsExtension';
 
 const SELECTION_KEY = `${EXTENSION_ID}:selectedEnvironments`;
 const REPAIR_OPT_OUT_KEY = `${EXTENSION_ID}:repairOptOut`;
@@ -88,47 +95,122 @@ export class PixiEnvironmentService implements Disposable {
      * choice between Pixi environments is never overridden.
      */
     async autoSelect(): Promise<void> {
-        const state = await getWorkspacePersistentState();
-        const selections: SelectionState = (await state.get(SELECTION_KEY)) ?? {};
-
         for (const folder of workspace.workspaceFolders ?? []) {
-            if (!workspace.getConfiguration(CONFIG_SECTION, folder.uri).get<boolean>('autoSelectEnvironment', true)) {
-                continue;
-            }
-
-            const candidates = this.getEnvironmentsForFolder(folder.uri).filter((env) => env.pythonPath);
-            if (candidates.length === 0) {
+            const target = await this.resolveTarget(folder);
+            if (!target) {
                 continue;
             }
 
             const active = await getActiveInterpreter(folder.uri);
-            if (active && candidates.some((env) => env.pythonPath === active)) {
-                traceVerbose(`${folder.name} already uses a Pixi interpreter; leaving it alone`);
+            if (active && canonicalPath(active) === canonicalPath(target.pythonPath ?? '')) {
                 continue;
             }
 
-            // Opening a parent directory can surface many unrelated projects. Only
-            // choose for the user when the intent is unambiguous: a project at the
-            // folder root, or a single project inside it.
-            const projectPaths = new Set(candidates.map((env) => env.projectPath));
-            const rootProject = folder.uri.fsPath;
-            const hasRootProject = projectPaths.has(rootProject);
-
-            if (!hasRootProject && projectPaths.size > 1) {
-                traceInfo(
-                    `${folder.name} contains ${projectPaths.size} Pixi projects and none at its root; ` +
-                        'leaving the interpreter alone. Use "Pixi: Select Environment" to choose.',
-                );
-                continue;
-            }
-
-            const scoped = hasRootProject ? candidates.filter((env) => env.projectPath === rootProject) : candidates;
-            const target = this.pickDefault(scoped, selections[folder.uri.fsPath], folder);
-            if (target) {
-                traceInfo(`Auto-selecting ${qualifiedName(target, this.environments)} for ${folder.name}`);
-                await this.select(target, folder.uri);
-            }
+            traceInfo(`Auto-selecting ${qualifiedName(target, this.environments)} for ${folder.name}`);
+            await this.select(target, folder.uri);
         }
+    }
+
+    /**
+     * The environment this folder should be using, or undefined when the choice
+     * is not ours to make — auto-selection disabled, no environments, an
+     * ambiguous parent directory, or the user already on a Pixi environment of
+     * the same project.
+     */
+    private async resolveTarget(folder: WorkspaceFolder): Promise<PixiEnvironment | undefined> {
+        if (!workspace.getConfiguration(CONFIG_SECTION, folder.uri).get<boolean>('autoSelectEnvironment', true)) {
+            return undefined;
+        }
+
+        const candidates = this.getEnvironmentsForFolder(folder.uri).filter((env) => env.pythonPath);
+        if (candidates.length === 0) {
+            return undefined;
+        }
+
+        const active = await getActiveInterpreter(folder.uri);
+        if (active && candidates.some((env) => canonicalPath(env.pythonPath ?? '') === canonicalPath(active))) {
+            traceVerbose(`${folder.name} already uses a Pixi interpreter; leaving it alone`);
+            return undefined;
+        }
+
+        // Opening a parent directory can surface many unrelated projects. Only
+        // choose for the user when the intent is unambiguous: a project at the
+        // folder root, or a single project inside it.
+        const projectPaths = new Set(candidates.map((env) => env.projectPath));
+        const rootProject = canonicalPath(folder.uri.fsPath);
+        const hasRootProject = [...projectPaths].some((p) => canonicalPath(p) === rootProject);
+
+        if (!hasRootProject && projectPaths.size > 1) {
+            traceInfo(
+                `${folder.name} contains ${projectPaths.size} Pixi projects and none at its root; ` +
+                    'leaving the interpreter alone. Use "Pixi: Select Environment" to choose.',
+            );
+            return undefined;
+        }
+
+        const scoped = hasRootProject
+            ? candidates.filter((env) => canonicalPath(env.projectPath) === rootProject)
+            : candidates;
+
+        const state = await getWorkspacePersistentState();
+        const selections: SelectionState = (await state.get(SELECTION_KEY)) ?? {};
+        return this.pickDefault(scoped, selections[folder.uri.fsPath], folder);
+    }
+
+    /**
+     * Re-applies our choice if something overwrites it during startup.
+     *
+     * The Python extension applies its own initial environment selection a few
+     * hundred milliseconds after activation, and when its discovery has not
+     * finished it falls back to a system Python — overwriting the environment we
+     * just selected. Observed in a fresh profile: we select at T+0.876, it
+     * selects /usr/local/bin/python3 at T+1.265.
+     *
+     * The window is deliberately short and logged. Once it closes, whatever is
+     * selected is the user's business and is never touched again.
+     */
+    async guardStartupSelection(windowMs: number): Promise<Disposable> {
+        const api = await getPythonApi();
+        const deadline = Date.now() + windowMs;
+        let reasserting = false;
+
+        return api.environments.onDidChangeActiveEnvironmentPath(async (event) => {
+            if (reasserting || Date.now() > deadline) {
+                return;
+            }
+
+            const uri = event.resource?.uri ?? workspace.workspaceFolders?.[0]?.uri;
+            if (!uri) {
+                return;
+            }
+            const folder = workspace.getWorkspaceFolder(uri);
+            if (!folder) {
+                return;
+            }
+
+            // If it already points at one of this project's environments, the
+            // change was ours or the user's and either way it is correct.
+            const mine = this.getEnvironmentsForFolder(folder.uri).filter((env) => env.pythonPath);
+            if (mine.some((env) => canonicalPath(env.pythonPath ?? '') === canonicalPath(event.path))) {
+                return;
+            }
+
+            const target = await this.resolveTarget(folder);
+            if (!target?.pythonPath) {
+                return;
+            }
+
+            traceWarn(
+                `Interpreter for ${folder.name} was changed to ${event.path} during startup; ` +
+                    `restoring ${qualifiedName(target, this.environments)}`,
+            );
+            reasserting = true;
+            try {
+                await this.select(target, folder.uri);
+            } finally {
+                reasserting = false;
+            }
+        });
     }
 
     private pickDefault(
@@ -264,23 +346,58 @@ export class PixiEnvironmentService implements Disposable {
     }
 
     /**
-     * When the environments extension is installed but nobody has written
-     * `python.useEnvironmentsExtension`, it silently owns terminal activation
-     * while providing no Pixi support. Offer to hand activation back.
+     * Hands environment management back to the Python extension.
+     *
+     * When `ms-python.vscode-python-envs` is installed and
+     * `python.useEnvironmentsExtension` has not been written, that extension
+     * owns both discovery and terminal activation — while having no Pixi
+     * support. Observed in a fresh profile: this extension selects the Pixi
+     * interpreter, and 300ms later the environments extension replaces it with
+     * `/usr/local/bin/python3`.
+     *
+     * The setting is an experiment flag, so a new install can be enrolled with
+     * it on. Writing an explicit `false` is the only thing that settles it, and
+     * without it this extension is simply overruled — which is why the default
+     * is to write rather than ask.
      */
-    async offerToReclaimTerminalActivation(): Promise<void> {
+    async ensureEnvironmentOwnership(): Promise<void> {
         if (!isEnvsExtensionInstalled() || !isSettingUnset() || this.environments.length === 0) {
             return;
         }
+        if (!isDiscoveryDelegated() && !isTerminalActivationDelegated()) {
+            return;
+        }
 
-        const mode = workspace.getConfiguration(CONFIG_SECTION).get<string>('configureEnvironmentsExtension', 'prompt');
+        const mode = workspace.getConfiguration(CONFIG_SECTION).get<string>('configureEnvironmentsExtension', 'auto');
         if (mode === 'off') {
             return;
         }
 
+        const wasDiscoveryDelegated = isDiscoveryDelegated();
+        const owns = wasDiscoveryDelegated ? 'environment discovery' : 'terminal activation';
+
         if (mode === 'auto') {
             await reclaimTerminalActivation(ConfigurationTarget.Workspace);
-            traceInfo('Set python.useEnvironmentsExtension=false (workspace) automatically');
+            traceInfo(
+                `The Python Environments extension owns ${owns} but has no Pixi support; ` +
+                    'set python.useEnvironmentsExtension=false for this workspace.',
+            );
+
+            // The Python extension reads this once and caches it for the
+            // session, so the setting does not take hold until the window
+            // reloads. Saying so beats leaving it half-applied.
+            if (wasDiscoveryDelegated) {
+                const reload = await window.showInformationMessage(
+                    'Pixi environments were being handled by the Python Environments extension, which has no Pixi ' +
+                        'support. That is now switched off for this workspace, but the Python extension only reads ' +
+                        'the setting at startup. Reload to pick up your Pixi environment?',
+                    'Reload Window',
+                    'Later',
+                );
+                if (reload === 'Reload Window') {
+                    await commands.executeCommand('workbench.action.reloadWindow');
+                }
+            }
             return;
         }
 
@@ -290,9 +407,9 @@ export class PixiEnvironmentService implements Disposable {
         }
 
         const choice = await window.showInformationMessage(
-            'The Python Environments extension is installed and is handling terminal activation, but it has no Pixi ' +
-                'support. Set `python.useEnvironmentsExtension` to false so the Python extension activates Pixi ' +
-                'environments in terminals?',
+            `The Python Environments extension is handling ${owns}, but it has no Pixi support, so your Pixi ` +
+                'environment may be ignored. Set `python.useEnvironmentsExtension` to false so the Python ' +
+                'extension handles it instead?',
             'Set for workspace',
             'Set globally',
             'Leave it',
@@ -309,9 +426,15 @@ export class PixiEnvironmentService implements Disposable {
 }
 
 function isInside(candidate: string, parent: string): boolean {
-    const rel = candidate.startsWith(parent);
-    return (
-        rel &&
-        (candidate.length === parent.length || candidate[parent.length] === '/' || candidate[parent.length] === '\\')
-    );
+    const child = canonicalPath(candidate);
+    const root = canonicalPath(parent);
+
+    if (child === root) {
+        return true;
+    }
+    if (!child.startsWith(root)) {
+        return false;
+    }
+    const next = child[root.length];
+    return next === '/' || next === '\\';
 }
