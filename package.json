@@ -106,7 +106,7 @@
                     ],
                     "default": "prompt",
                     "markdownDescription": "What to do when an environment is missing its `conda-meta/pixi` marker, which makes VS Code misidentify it as conda and stalls Jupyter kernel starts by 30 seconds.\n\n- `prompt`: offer to run `pixi install`\n- `auto`: repair silently\n- `off`: ignore",
-                    "scope": "resource"
+                    "scope": "window"
                 },
                 "pixi-vscode.configureEnvironmentsExtension": {
                     "type": "string",
@@ -117,7 +117,7 @@
                     ],
                     "default": "prompt",
                     "markdownDescription": "When `ms-python.vscode-python-envs` is installed, it takes over terminal activation from the Python extension unless `python.useEnvironmentsExtension` is *explicitly* set to `false`. This controls whether to offer writing that setting.\n\n- `prompt`: offer once per workspace\n- `auto`: write it without asking\n- `off`: leave settings alone",
-                    "scope": "resource"
+                    "scope": "window"
                 },
                 "pixi-vscode.showStatusBarItem": {
                     "type": "boolean",

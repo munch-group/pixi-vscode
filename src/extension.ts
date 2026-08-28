@@ -48,10 +48,19 @@ export async function activate(context: ExtensionContext): Promise<void> {
     }
 
     await service.refresh();
-    await service.repairDegradedEnvironments();
     await service.autoSelect();
-    await service.offerToReclaimTerminalActivation();
     await statusBar.update();
+
+    // The remaining steps each await a notification the user may never answer,
+    // so they must not sit in the activation path — selecting the interpreter
+    // would be blocked behind an unanswered dialog.
+    void (async () => {
+        await service.repairDegradedEnvironments();
+        // A repair changes which environments are usable, so re-select.
+        await service.autoSelect();
+        await service.offerToReclaimTerminalActivation();
+        await statusBar.update();
+    })();
 }
 
 /**

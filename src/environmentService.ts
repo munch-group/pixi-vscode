@@ -10,7 +10,7 @@ import {
     WorkspaceFolder,
 } from 'vscode';
 
-import { traceError, traceInfo, traceVerbose } from './common/logging';
+import { traceError, traceInfo, traceVerbose, traceWarn } from './common/logging';
 import { getWorkspacePersistentState } from './common/persistentState';
 import { CONFIG_SECTION, EXTENSION_ID } from './common/utils';
 import { pixiInstall } from './pixi/cli';
@@ -50,6 +50,14 @@ export class PixiEnvironmentService implements Disposable {
             () => discoverEnvironments(token),
         );
         traceInfo(`Discovered ${this.environments.length} Pixi environment(s)`);
+
+        const degraded = this.environments.filter(causesKernelStall);
+        if (degraded.length > 0) {
+            traceWarn(
+                `${degraded.length} environment(s) are missing conda-meta/pixi and will stall Jupyter kernel ` +
+                    `starts by 30s: ${degraded.map((env) => env.prefix).join(', ')}`,
+            );
+        }
         this._onDidChangeEnvironments.fire();
         return this.environments;
     }
@@ -116,10 +124,17 @@ export class PixiEnvironmentService implements Disposable {
         if (stored) {
             return stored;
         }
+
+        // A folder can contain several Pixi projects, and their environments are
+        // routinely all called "default". Prefer the project closest to the
+        // folder root so the outer project wins over anything nested inside it.
+        const nearest = Math.min(...candidates.map((env) => env.projectPath.length));
+        const closest = candidates.filter((env) => env.projectPath.length === nearest);
+
         const preferred = workspace
             .getConfiguration(CONFIG_SECTION, folder.uri)
             .get<string>('defaultEnvironmentName', 'default');
-        return candidates.find((env) => env.name === preferred) ?? candidates[0];
+        return closest.find((env) => env.name === preferred) ?? closest[0];
     }
 
     /**
@@ -148,7 +163,7 @@ export class PixiEnvironmentService implements Disposable {
                 return;
             }
 
-            const names = broken.map(displayName).join(', ');
+            const names = broken.map((env) => `${displayName(env)} at ${env.prefix}`).join(', ');
             const choice = await window.showWarningMessage(
                 `${broken.length} Pixi environment(s) are missing their \`conda-meta/pixi\` marker (${names}). ` +
                     'VS Code will misread them as conda environments, which delays every Jupyter kernel start by 30 seconds. ' +

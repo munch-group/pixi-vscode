@@ -34,7 +34,7 @@ export async function promptForEnvironment(service: PixiEnvironmentService): Pro
         items.push({
             label: env.name,
             description: env.pythonVersion ? `Python ${env.pythonVersion}` : undefined,
-            detail: causesKernelStall(env) ? `$(warning) ${describeHealth(env.health)}` : env.prefix,
+            detail: causesKernelStall(env) ? `$(warning) ${env.prefix} — ${describeHealth(env.health)}` : env.prefix,
             iconPath: new ThemeIcon(env.pythonPath === active ? 'check' : 'blank'),
             environment: env,
         });
