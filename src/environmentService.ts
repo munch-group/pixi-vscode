@@ -16,7 +16,7 @@ import { CONFIG_SECTION, EXTENSION_ID } from './common/utils';
 import { pixiInstall } from './pixi/cli';
 import { discoverEnvironments } from './pixi/discovery';
 import { causesKernelStall } from './pixi/health';
-import { displayName, PixiEnvironment } from './pixi/types';
+import { displayName, PixiEnvironment, qualifiedName } from './pixi/types';
 import { getActiveInterpreter, refreshInterpreters, setActiveInterpreter } from './python/api';
 import { isEnvsExtensionInstalled, isSettingUnset, reclaimTerminalActivation } from './python/envsExtension';
 
@@ -107,9 +107,25 @@ export class PixiEnvironmentService implements Disposable {
                 continue;
             }
 
-            const target = this.pickDefault(candidates, selections[folder.uri.fsPath], folder);
+            // Opening a parent directory can surface many unrelated projects. Only
+            // choose for the user when the intent is unambiguous: a project at the
+            // folder root, or a single project inside it.
+            const projectPaths = new Set(candidates.map((env) => env.projectPath));
+            const rootProject = folder.uri.fsPath;
+            const hasRootProject = projectPaths.has(rootProject);
+
+            if (!hasRootProject && projectPaths.size > 1) {
+                traceInfo(
+                    `${folder.name} contains ${projectPaths.size} Pixi projects and none at its root; ` +
+                        'leaving the interpreter alone. Use "Pixi: Select Environment" to choose.',
+                );
+                continue;
+            }
+
+            const scoped = hasRootProject ? candidates.filter((env) => env.projectPath === rootProject) : candidates;
+            const target = this.pickDefault(scoped, selections[folder.uri.fsPath], folder);
             if (target) {
-                traceInfo(`Auto-selecting ${displayName(target)} for ${folder.name}`);
+                traceInfo(`Auto-selecting ${qualifiedName(target, this.environments)} for ${folder.name}`);
                 await this.select(target, folder.uri);
             }
         }
@@ -143,11 +159,30 @@ export class PixiEnvironmentService implements Disposable {
      * marker, after which the Python extension classifies the environment as
      * Pixi and uses the fast `pixi run` path.
      */
+    /** Environments currently backing a workspace folder's interpreter. */
+    private async getSelectedEnvironments(): Promise<PixiEnvironment[]> {
+        const selected = new Map<string, PixiEnvironment>();
+        for (const folder of workspace.workspaceFolders ?? []) {
+            const active = await getActiveInterpreter(folder.uri);
+            const match = active ? this.environments.find((env) => env.pythonPath === active) : undefined;
+            if (match) {
+                selected.set(match.id, match);
+            }
+        }
+        return [...selected.values()];
+    }
+
     async repairDegradedEnvironments(explicit = false): Promise<void> {
-        const broken = this.environments.filter(causesKernelStall);
+        // Unprompted, only complain about environments actually in use. Opening a
+        // parent directory can discover many unrelated projects, and warning about
+        // an environment nobody is working in is pure noise.
+        const candidates = explicit ? [...this.environments] : await this.getSelectedEnvironments();
+        const broken = candidates.filter(causesKernelStall);
         if (broken.length === 0) {
             if (explicit) {
                 window.showInformationMessage('All Pixi environments are healthy.');
+            } else {
+                traceVerbose('No in-use environment needs repair; not prompting.');
             }
             return;
         }
@@ -157,17 +192,24 @@ export class PixiEnvironmentService implements Disposable {
             return;
         }
 
+        traceInfo(
+            `Prompting to repair ${broken.length} in-use environment(s): ` + broken.map((env) => env.prefix).join(', '),
+        );
+
         const state = await getWorkspacePersistentState();
         if (!explicit && mode === 'prompt') {
             if (await state.get<boolean>(REPAIR_OPT_OUT_KEY)) {
                 return;
             }
 
-            const names = broken.map((env) => `${displayName(env)} at ${env.prefix}`).join(', ');
+            const names = broken.map((env) => `${qualifiedName(env, this.environments)} (${env.prefix})`).join(', ');
+            const subject =
+                broken.length === 1
+                    ? `The Pixi environment in use, ${names}, is missing its \`conda-meta/pixi\` marker`
+                    : `${broken.length} Pixi environments in use are missing their \`conda-meta/pixi\` marker: ${names}`;
             const choice = await window.showWarningMessage(
-                `${broken.length} Pixi environment(s) are missing their \`conda-meta/pixi\` marker (${names}). ` +
-                    'VS Code will misread them as conda environments, which delays every Jupyter kernel start by 30 seconds. ' +
-                    'Repair by running `pixi install`?',
+                `${subject}, so VS Code reads it as a conda environment and every Jupyter kernel start takes an ` +
+                    'extra 30 seconds. Repair by running `pixi install`?',
                 'Repair',
                 'Not now',
                 "Don't ask again",

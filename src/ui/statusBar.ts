@@ -34,7 +34,6 @@ export class PixiStatusBar implements Disposable {
 
         const active = await getActiveInterpreter();
         const current = environments.find((env) => env.pythonPath === active);
-        const degraded = environments.filter(causesKernelStall);
 
         if (current) {
             this.item.text = `$(prefix-dev) ${current.projectName}:${current.name}`;
@@ -44,11 +43,13 @@ export class PixiStatusBar implements Disposable {
             this.item.tooltip = 'No Pixi environment is active. Click to select one.';
         }
 
-        if (degraded.length > 0) {
+        // Only flag the environment actually in use — a degraded environment in
+        // some unrelated project is not this window's problem.
+        if (current && causesKernelStall(current)) {
             this.item.text = `$(warning) ${this.item.text}`;
             this.item.tooltip =
-                `${degraded.length} Pixi environment(s) are missing conda-meta/pixi and will stall Jupyter ` +
-                'kernel starts by 30s. Run "Pixi: Repair Environments".';
+                `${current.prefix} is missing conda-meta/pixi and will stall Jupyter kernel starts by 30s. ` +
+                'Run "Pixi: Repair Environments".';
             this.item.backgroundColor = new ThemeColor('statusBarItem.warningBackground');
         } else {
             this.item.backgroundColor = undefined;
