@@ -12,7 +12,7 @@ export class PixiStatusBar implements Disposable {
 
     constructor(private readonly service: PixiEnvironmentService) {
         this.item = window.createStatusBarItem(StatusBarAlignment.Right, 99);
-        this.item.command = 'pixi-vscode.selectEnvironment';
+        this.item.command = 'im-pixi-vscode.selectEnvironment';
         this.disposables.push(
             this.item,
             service.onDidChangeEnvironments(() => void this.update()),

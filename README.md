@@ -70,15 +70,15 @@ It talks directly to the Python extension's stable API, so **the Python Environm
 
 ## Settings
 
-| Setting                                      | Default     | Description                                                           |
-| -------------------------------------------- | ----------- | --------------------------------------------------------------------- |
-| `pixi-vscode.pixiExecutable`                 | `""`        | Path to Pixi. Empty means auto-discovery.                             |
-| `pixi-vscode.searchDepth`                    | `2`         | Directory levels below each workspace folder to search for manifests. |
-| `pixi-vscode.autoSelectEnvironment`          | `true`      | Select the Pixi environment automatically.                            |
-| `pixi-vscode.defaultEnvironmentName`         | `"default"` | Which environment to pick when nothing is chosen yet.                 |
-| `pixi-vscode.repairEnvironments`             | `"prompt"`  | `prompt` / `auto` / `off` for marker repair.                          |
-| `pixi-vscode.configureEnvironmentsExtension` | `"prompt"`  | Whether to offer setting `python.useEnvironmentsExtension`.           |
-| `pixi-vscode.showStatusBarItem`              | `true`      | Show the active environment in the status bar.                        |
+| Setting                                         | Default     | Description                                                           |
+| ----------------------------------------------- | ----------- | --------------------------------------------------------------------- |
+| `im-pixi-vscode.pixiExecutable`                 | `""`        | Path to Pixi. Empty means auto-discovery.                             |
+| `im-pixi-vscode.searchDepth`                    | `2`         | Directory levels below each workspace folder to search for manifests. |
+| `im-pixi-vscode.autoSelectEnvironment`          | `true`      | Select the Pixi environment automatically.                            |
+| `im-pixi-vscode.defaultEnvironmentName`         | `"default"` | Which environment to pick when nothing is chosen yet.                 |
+| `im-pixi-vscode.repairEnvironments`             | `"prompt"`  | `prompt` / `auto` / `off` for marker repair.                          |
+| `im-pixi-vscode.configureEnvironmentsExtension` | `"prompt"`  | Whether to offer setting `python.useEnvironmentsExtension`.           |
+| `im-pixi-vscode.showStatusBarItem`              | `true`      | Show the active environment in the status bar.                        |
 
 ### About `python.useEnvironmentsExtension`
 
@@ -90,7 +90,7 @@ This bites hardest on a **new VS Code profile**, which is what a new student has
 experiment flag — so a fresh install can be enrolled with it switched on. Observed on a clean profile: this extension
 selects the Pixi interpreter, and 300ms later the environments extension replaces it with `/usr/local/bin/python3`.
 
-Writing an explicit `false` is the only thing that settles it, which is why `pixi-vscode.configureEnvironmentsExtension`
+Writing an explicit `false` is the only thing that settles it, which is why `im-pixi-vscode.configureEnvironmentsExtension`
 defaults to `auto` rather than asking. Two details matter:
 
 - The two gates behave differently. Discovery is read with `get()`, so an experiment-supplied default counts. Terminal
@@ -106,7 +106,7 @@ the first-run reload entirely.
 
 Auto-selection deliberately does not fight you: if the active interpreter is already a Pixi environment **from the same
 project**, your choice is left alone. It only steps in when the interpreter is something else (a global Python, a venv,
-or nothing). Set `pixi-vscode.autoSelectEnvironment` to `false` to disable it entirely.
+or nothing). Set `im-pixi-vscode.autoSelectEnvironment` to `false` to disable it entirely.
 
 ## Limitations
 
@@ -122,16 +122,16 @@ and expected classification, which extension owns terminal activation, and any l
 `Pixi: Repair Environments`, then reload the window so the Python extension re-scans.
 
 **No environments discovered.** Verify a `pixi.toml` (or a `pyproject.toml` with a `[tool.pixi]` section) exists, run
-`pixi install`, and raise `pixi-vscode.searchDepth` if the project is nested deeply.
+`pixi install`, and raise `im-pixi-vscode.searchDepth` if the project is nested deeply.
 
-**Pixi executable not found.** Ensure Pixi is on `PATH`, or set `pixi-vscode.pixiExecutable`.
+**Pixi executable not found.** Ensure Pixi is on `PATH`, or set `im-pixi-vscode.pixiExecutable`.
 
 ## Development
 
 ```bash
 npm install
 npm run compile        # development build into dist/
-npx vsce package       # produces pixi-vscode-<version>.vsix
+npx vsce package       # produces im-pixi-vscode-<version>.vsix
 ```
 
 Press `F5` to launch an Extension Development Host. See [CONTRIBUTING.md](./CONTRIBUTING.md).

@@ -79,8 +79,8 @@ echo "sandbox: $SANDBOX"
 echo
 
 echo "==> 1/7  building the extension"
-( cd "$REPO" && npm run --silent compile >/dev/null && npx --yes @vscode/vsce package --out "$SANDBOX/pixi-vscode.vsix" >/dev/null )
-echo "    $(du -h "$SANDBOX/pixi-vscode.vsix" | cut -f1) vsix"
+( cd "$REPO" && npm run --silent compile >/dev/null && npx --yes @vscode/vsce package --out "$SANDBOX/im-pixi-vscode.vsix" >/dev/null )
+echo "    $(du -h "$SANDBOX/im-pixi-vscode.vsix" | cut -f1) vsix"
 
 echo "==> 2/7  writing a pixi project at a path VS Code has never seen"
 mkdir -p "$FOLDER/.vscode"
@@ -100,7 +100,7 @@ EOF
 # the settings rather than the extension.
 cat > "$FOLDER/.vscode/settings.json" <<'EOF'
 {
-    // Intentionally almost empty. munch-group.pixi-vscode is supposed to find
+    // Intentionally almost empty. munch-group.im-pixi-vscode is supposed to find
     // the environment in .pixi without being told where to look. If this file
     // has to grow to make the kernel work, that is a bug in the extension.
     "jupyter.notebookFileRoot": "${workspaceFolder}"
@@ -188,7 +188,7 @@ if [ "$WITH_PIXI_CODE" -eq 1 ]; then
          --install-extension renan-r-santos.pixi-code --force 2>&1 | sed 's/^/    /'
 fi
 code --user-data-dir "$USER_DATA" --extensions-dir "$EXTENSIONS" \
-     --install-extension "$SANDBOX/pixi-vscode.vsix" --force 2>&1 | sed 's/^/    /'
+     --install-extension "$SANDBOX/im-pixi-vscode.vsix" --force 2>&1 | sed 's/^/    /'
 
 echo "==> 6/7  checking the environment, from outside and inside"
 # From outside: the same binary the Python extension uses to classify

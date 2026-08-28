@@ -24,14 +24,14 @@ export async function activate(context: ExtensionContext): Promise<void> {
     // environment check below fails — "Run Diagnostics" is most useful exactly
     // when something is wrong.
     context.subscriptions.push(
-        commands.registerCommand('pixi-vscode.selectEnvironment', () => promptForEnvironment(service)),
-        commands.registerCommand('pixi-vscode.refreshEnvironments', async () => {
+        commands.registerCommand('im-pixi-vscode.selectEnvironment', () => promptForEnvironment(service)),
+        commands.registerCommand('im-pixi-vscode.refreshEnvironments', async () => {
             await service.refresh();
             await statusBar.update();
         }),
-        commands.registerCommand('pixi-vscode.repairEnvironments', () => service.repairDegradedEnvironments(true)),
-        commands.registerCommand('pixi-vscode.runDiagnostics', () => runDiagnostics(service, log)),
-        commands.registerCommand('pixi-vscode.showLogs', () => log.show()),
+        commands.registerCommand('im-pixi-vscode.repairEnvironments', () => service.repairDegradedEnvironments(true)),
+        commands.registerCommand('im-pixi-vscode.runDiagnostics', () => runDiagnostics(service, log)),
+        commands.registerCommand('im-pixi-vscode.showLogs', () => log.show()),
         workspace.onDidChangeWorkspaceFolders(() => void service.refresh()),
     );
 

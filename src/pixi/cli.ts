@@ -11,7 +11,7 @@ export const MINIMUM_PIXI_VERSION = '0.53.0';
 export class PixiNotFoundError extends Error {
     constructor() {
         super(
-            'Pixi executable not found. Install Pixi from https://pixi.sh, or set "pixi-vscode.pixiExecutable" in your settings.',
+            'Pixi executable not found. Install Pixi from https://pixi.sh, or set "im-pixi-vscode.pixiExecutable" in your settings.',
         );
         this.name = 'PixiNotFoundError';
     }

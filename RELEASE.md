@@ -33,5 +33,5 @@ on merges to `main` (those jobs were removed from CI in the fork).
 ```bash
 npm ci
 npx vsce package
-code --install-extension pixi-vscode-<version>.vsix
+code --install-extension im-pixi-vscode-<version>.vsix
 ```

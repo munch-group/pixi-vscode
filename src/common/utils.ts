@@ -1,8 +1,8 @@
 import * as fs from 'fs-extra';
 import * as os from 'os';
 
-export const EXTENSION_ID = 'munch-group.pixi-vscode';
-export const CONFIG_SECTION = 'pixi-vscode';
+export const EXTENSION_ID = 'munch-group.im-pixi-vscode';
+export const CONFIG_SECTION = 'im-pixi-vscode';
 
 export const PYTHON_EXTENSION_ID = 'ms-python.python';
 export const ENVS_EXTENSION_ID = 'ms-python.vscode-python-envs';

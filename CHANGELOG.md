@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to the "pixi-vscode" extension will be documented in this file.
+All notable changes to the "im-pixi-vscode" extension will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
@@ -43,9 +43,9 @@ Initial release of the munch-group fork.
 ### Fork housekeeping
 
 - Forked from [pixi-code](https://github.com/renan-r-santos/pixi-code) `v0.2.0` (commit `996c368`) by Renan Santos
-- Renamed extension to `munch-group.pixi-vscode` with its own environment/package manager ID, so it does not collide
+- Renamed extension to `munch-group.im-pixi-vscode` with its own environment/package manager ID, so it does not collide
   with the upstream extension
-- Renamed the `pixi-code.pixiExecutable` setting to `pixi-vscode.pixiExecutable`
+- Renamed the `pixi-code.pixiExecutable` setting to `im-pixi-vscode.pixiExecutable`
 - Dropped the automatic pre-release publishing jobs from CI (no marketplace tokens configured yet)
 
 Everything below documents the upstream project's history prior to the fork.
