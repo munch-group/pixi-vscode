@@ -43,13 +43,22 @@ export class PixiStatusBar implements Disposable {
             this.item.tooltip = 'No Pixi environment is active. Click to select one.';
         }
 
-        // Only flag the environment actually in use — a degraded environment in
-        // some unrelated project is not this window's problem.
+        // VS Code accepts only two background colours on a status bar item,
+        // `statusBarItem.errorBackground` and `statusBarItem.warningBackground`
+        // (see the note on StatusBarItem.backgroundColor). Any other ThemeColor
+        // is ignored and the pill renders with no background at all, so a blue
+        // one is not available to an extension. The two states that need to
+        // stand out therefore take one each, which also keeps them
+        // distinguishable from one another.
         if (current && causesKernelStall(current)) {
+            // Costs 30 seconds on every kernel start, and there is a one-click fix.
             this.item.text = `$(warning) ${this.item.text}`;
             this.item.tooltip =
                 `${current.prefix} is missing conda-meta/pixi and will stall Jupyter kernel starts by 30s. ` +
                 'Run "Pixi: Repair Environments".';
+            this.item.backgroundColor = new ThemeColor('statusBarItem.errorBackground');
+        } else if (!current) {
+            // Nothing selected: prominent, because the pill is the thing to click.
             this.item.backgroundColor = new ThemeColor('statusBarItem.warningBackground');
         } else {
             this.item.backgroundColor = undefined;
