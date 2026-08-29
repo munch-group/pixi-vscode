@@ -22,8 +22,23 @@ nodejs = ">=22"
 [tasks.dependencies]
 cmd = "npm install && npm install --loglevel error -g @vscode/vsce"
 
+# Bump the version in package.json and package-lock.json. The version is
+# <major>.<minor>.<fix>; the flag says which part moves, and --fix is the
+# default because it is the common case.
+#
+#     pixi run bump            0.1.0 -> 0.1.1
+#     pixi run bump --minor    0.1.0 -> 0.2.0
+#     pixi run bump --major    0.1.0 -> 1.0.0
+#
+# No depends-on: bumping a version number does not need node_modules or vsce,
+# and making it wait on an npm install is a slow way to edit two files.
 [tasks.bump]
-cmd = "vsce publish minor"
+cmd = "node scripts/bump-version.js"
+
+# Publish the current version to the Marketplace. Bump first — vsce refuses a
+# version that has already been published.
+[tasks.publish]
+cmd = "vsce publish"
 depends-on = ["dependencies"]
 
 # --out gives the package a stable name. Without it vsce writes

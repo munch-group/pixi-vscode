@@ -14,7 +14,16 @@ on merges to `main` (those jobs were removed from CI in the fork).
 
 ## Stable release
 
-1. **Create a PR updating `package.json` version, `package-lock.json` and `CHANGELOG.md`**
+1. **Bump the version and update `CHANGELOG.md`**
+
+    ```bash
+    pixi run bump            # 0.1.0 -> 0.1.1  (default)
+    pixi run bump --minor    # 0.1.0 -> 0.2.0
+    pixi run bump --major    # 0.1.0 -> 1.0.0
+    ```
+
+    This edits `package.json` and `package-lock.json` and nothing else — no
+    commit, no tag. Open a PR with the result.
 
 2. **Merge PR**
 
