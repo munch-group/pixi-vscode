@@ -14,9 +14,9 @@ import {
 import { traceError, traceInfo, traceVerbose, traceWarn } from './common/logging';
 import { getWorkspacePersistentState } from './common/persistentState';
 import { canonicalPath, CONFIG_SECTION, EXTENSION_ID } from './common/utils';
-import { pixiInstall } from './pixi/cli';
+import { pixiInstall, pixiRebuild } from './pixi/cli';
 import { discoverEnvironments } from './pixi/discovery';
-import { causesKernelStall } from './pixi/health';
+import { causesKernelStall, needsRebuild } from './pixi/health';
 import { displayName, PixiEnvironment, qualifiedName } from './pixi/types';
 import { getActiveInterpreter, getPythonApi, refreshInterpreters, setActiveInterpreter } from './python/api';
 import {
@@ -30,6 +30,7 @@ import {
 const SELECTION_KEY = `${EXTENSION_ID}:selectedEnvironments`;
 const REPAIR_OPT_OUT_KEY = `${EXTENSION_ID}:repairOptOut`;
 const ACTIVATION_PROMPT_KEY = `${EXTENSION_ID}:activationPromptAnswered`;
+const REBUILD_OPT_OUT_KEY = `${EXTENSION_ID}:rebuildOptOut`;
 
 type SelectionState = Record<string, string>;
 
@@ -342,6 +343,83 @@ export class PixiEnvironmentService implements Disposable {
             window.showErrorMessage(`Could not repair: ${failures.join(', ')}. See the Pixi output channel.`);
         } else {
             window.showInformationMessage(`Repaired ${broken.length} Pixi environment(s).`);
+        }
+    }
+
+    /**
+     * Rebuilds environments whose folder was moved after `pixi install`.
+     *
+     * Always asks, even when repairEnvironments is `auto`. The marker repair is
+     * cheap and safe; this one deletes the environment and downloads it again,
+     * which is not a thing to do to someone silently — in testing it discarded
+     * 203 MiB.
+     */
+    async rebuildRelocatedEnvironments(explicit = false): Promise<void> {
+        const candidates = explicit ? [...this.environments] : await this.getSelectedEnvironments();
+        const moved = candidates.filter(needsRebuild);
+        if (moved.length === 0) {
+            return;
+        }
+
+        if (workspace.getConfiguration(CONFIG_SECTION).get<string>('repairEnvironments', 'prompt') === 'off') {
+            return;
+        }
+
+        const state = await getWorkspacePersistentState();
+        if (!explicit && (await state.get<boolean>(REBUILD_OPT_OUT_KEY))) {
+            return;
+        }
+
+        const names = moved.map((env) => `${qualifiedName(env, this.environments)} (${env.prefix})`).join(', ');
+        traceWarn(`Environment(s) moved after installation and must be rebuilt: ${names}`);
+
+        const choice = await window.showWarningMessage(
+            `This folder was moved after \`pixi install\`, so ${names} still points at its old location. The ` +
+                'interpreter appears to work, but Jupyter kernels will fail to start. Fixing it means deleting ' +
+                'and re-downloading the environment, which takes a few minutes.',
+            'Rebuild',
+            'Not now',
+            "Don't ask again",
+        );
+
+        if (choice === "Don't ask again") {
+            await state.set(REBUILD_OPT_OUT_KEY, true);
+            return;
+        }
+        if (choice !== 'Rebuild') {
+            return;
+        }
+
+        const failures: string[] = [];
+        await window.withProgress(
+            { location: ProgressLocation.Notification, title: 'Rebuilding Pixi environments', cancellable: true },
+            async (progress, token) => {
+                for (const [index, env] of moved.entries()) {
+                    if (token.isCancellationRequested) {
+                        return;
+                    }
+                    progress.report({
+                        message: `${qualifiedName(env, this.environments)} (${index + 1}/${moved.length})`,
+                        increment: index === 0 ? 0 : 100 / moved.length,
+                    });
+                    try {
+                        await pixiRebuild(env.manifestPath, env.name, token);
+                    } catch (error) {
+                        traceError(`Failed to rebuild ${qualifiedName(env, this.environments)}:`, error);
+                        failures.push(qualifiedName(env, this.environments));
+                    }
+                }
+            },
+        );
+
+        await refreshInterpreters();
+        await this.refresh();
+        await this.autoSelect();
+
+        if (failures.length > 0) {
+            window.showErrorMessage(`Could not rebuild: ${failures.join(', ')}. See the Pixi output channel.`);
+        } else {
+            window.showInformationMessage(`Rebuilt ${moved.length} Pixi environment(s).`);
         }
     }
 

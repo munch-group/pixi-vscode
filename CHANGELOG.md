@@ -20,6 +20,14 @@ Initial release of the munch-group fork.
   interactive sees EOF and exits, and timeouts kill the whole process _group_ rather than
   orphaning grandchildren.
 
+- **Detects a course folder that was moved or copied after `pixi install`** and offers to rebuild
+  it. A Pixi environment is not relocatable: absolute paths are baked into console script
+  shebangs and Jupyter kernelspecs, so the interpreter still imports while every kernel dies on
+  start. `pixi install` does not repair this — it refreshes Pixi's bookkeeping and leaves the
+  baked-in paths alone, after which everything claims to be healthy while still being broken.
+  The repair is `pixi clean` followed by `pixi install`, and because it deletes and re-downloads
+  the environment it always asks first, even when repair is set to `auto`.
+
 ### Changed
 
 - **Dropped the dependency on `ms-python.vscode-python-envs`.** The extension now drives the

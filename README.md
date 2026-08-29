@@ -47,10 +47,24 @@ killed after 30 s.
 - **Selects** the environment as the Python interpreter — Jupyter derives its kernel from the same source, so notebooks
   follow automatically
 - **Detects and repairs** environments missing `conda-meta/pixi`, which is what causes the stall
+- **Detects a moved or copied course folder** and offers to rebuild it — see below
 - **Reports** the whole picture via `Pixi: Run Diagnostics`, including any orphaned `pixi shell` processes
 - **Never leaks processes**: subprocesses run with stdin closed and are killed by process _group_ on timeout
 
 It talks directly to the Python extension's stable API, so **the Python Environments extension is not required**.
+
+### Moved or copied folders
+
+A Pixi environment is not relocatable. Absolute paths are baked into console script shebangs and Jupyter kernelspecs at
+install time, so after the folder is moved the interpreter still imports fine while `jupyter` fails with `bad
+interpreter` and any kernel VS Code launches dies immediately. Copying a folder breaks it the same way.
+
+**`pixi install` does not fix this.** It rewrites Pixi's own bookkeeping and leaves the baked-in paths untouched, so
+afterwards every marker claims the environment is healthy while it is still broken. The only repair is `pixi clean`
+followed by `pixi install`, which is what this extension offers.
+
+That repair deletes and re-downloads the environment — around 200MB for the course environment — so it always asks
+first, even when `repairEnvironments` is set to `auto`.
 
 ## Requirements
 
@@ -120,6 +134,9 @@ and expected classification, which extension owns terminal activation, and any l
 
 **Kernels still take 30 seconds.** Check the diagnostics report for `expected classification: Conda (WRONG …)`. Run
 `Pixi: Repair Environments`, then reload the window so the Python extension re-scans.
+
+**Kernels never start, but the interpreter looks fine.** The folder was probably moved or copied after
+`pixi install`. Run `Pixi: Run Diagnostics`; a relocated environment says so and names the repair.
 
 **No environments discovered.** Verify a `pixi.toml` (or a `pyproject.toml` with a `[tool.pixi]` section) exists, run
 `pixi install`, and raise `im-pixi-vscode.searchDepth` if the project is nested deeply.

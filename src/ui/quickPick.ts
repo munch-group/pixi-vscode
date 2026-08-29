@@ -1,7 +1,7 @@
 import { QuickPickItem, QuickPickItemKind, ThemeIcon, Uri, window, workspace } from 'vscode';
 
 import { PixiEnvironmentService } from '../environmentService';
-import { causesKernelStall, describeHealth } from '../pixi/health';
+import { causesKernelStall, describeHealth, needsRebuild } from '../pixi/health';
 import { displayName, PixiEnvironment } from '../pixi/types';
 import { getActiveInterpreter } from '../python/api';
 
@@ -34,7 +34,10 @@ export async function promptForEnvironment(service: PixiEnvironmentService): Pro
         items.push({
             label: env.name,
             description: env.pythonVersion ? `Python ${env.pythonVersion}` : undefined,
-            detail: causesKernelStall(env) ? `$(warning) ${env.prefix} — ${describeHealth(env.health)}` : env.prefix,
+            detail:
+                causesKernelStall(env) || needsRebuild(env)
+                    ? `$(warning) ${env.prefix} — ${describeHealth(env.health)}`
+                    : env.prefix,
             iconPath: new ThemeIcon(env.pythonPath === active ? 'check' : 'blank'),
             environment: env,
         });

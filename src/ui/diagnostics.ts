@@ -87,6 +87,11 @@ export async function runDiagnostics(service: PixiEnvironmentService, log: LogOu
             `    expected classification: ${hasPixiMarker ? 'Pixi (fast)' : 'Conda (WRONG — causes the 30s kernel stall)'}`,
         );
         add(`    health:    ${describeHealth(env.health)}`);
+        if (env.health === 'relocated') {
+            add('    repair:    `pixi clean` then `pixi install` — a plain reinstall will NOT fix this');
+        } else if (env.health === 'missingPixiMarker') {
+            add('    repair:    `pixi install`');
+        }
         add();
     }
 

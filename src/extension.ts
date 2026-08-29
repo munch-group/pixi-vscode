@@ -29,7 +29,10 @@ export async function activate(context: ExtensionContext): Promise<void> {
             await service.refresh();
             await statusBar.update();
         }),
-        commands.registerCommand('im-pixi-vscode.repairEnvironments', () => service.repairDegradedEnvironments(true)),
+        commands.registerCommand('im-pixi-vscode.repairEnvironments', async () => {
+            await service.repairDegradedEnvironments(true);
+            await service.rebuildRelocatedEnvironments(true);
+        }),
         commands.registerCommand('im-pixi-vscode.runDiagnostics', () => runDiagnostics(service, log)),
         commands.registerCommand('im-pixi-vscode.showLogs', () => log.show()),
         workspace.onDidChangeWorkspaceFolders(() => void service.refresh()),
@@ -60,6 +63,7 @@ export async function activate(context: ExtensionContext): Promise<void> {
     // would be blocked behind an unanswered dialog.
     void (async () => {
         await service.repairDegradedEnvironments();
+        await service.rebuildRelocatedEnvironments();
         // A repair changes which environments are usable, so re-select.
         await service.autoSelect();
         await service.ensureEnvironmentOwnership();

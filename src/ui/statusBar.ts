@@ -2,7 +2,7 @@ import { Disposable, StatusBarAlignment, StatusBarItem, ThemeColor, window, work
 
 import { CONFIG_SECTION } from '../common/utils';
 import { PixiEnvironmentService } from '../environmentService';
-import { causesKernelStall } from '../pixi/health';
+import { causesKernelStall, needsRebuild } from '../pixi/health';
 import { displayName } from '../pixi/types';
 import { getActiveInterpreter } from '../python/api';
 
@@ -50,7 +50,13 @@ export class PixiStatusBar implements Disposable {
         // one is not available to an extension. The two states that need to
         // stand out therefore take one each, which also keeps them
         // distinguishable from one another.
-        if (current && causesKernelStall(current)) {
+        if (current && needsRebuild(current)) {
+            this.item.text = `$(warning) ${this.item.text}`;
+            this.item.tooltip =
+                `${current.prefix} was moved after \`pixi install\`. Jupyter kernels will fail to start. ` +
+                'Run "Pixi: Repair Environments".';
+            this.item.backgroundColor = new ThemeColor('statusBarItem.errorBackground');
+        } else if (current && causesKernelStall(current)) {
             // Costs 30 seconds on every kernel start, and there is a one-click fix.
             this.item.text = `$(warning) ${this.item.text}`;
             this.item.tooltip =

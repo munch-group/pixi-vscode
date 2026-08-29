@@ -41,6 +41,7 @@
 #
 #     scripts/vscode_kernel_smoketest.sh                # healthy environment
 #     scripts/vscode_kernel_smoketest.sh --stalled      # reproduce the 30s stall
+#     scripts/vscode_kernel_smoketest.sh --moved        # reproduce a moved course folder
 #     scripts/vscode_kernel_smoketest.sh --trusted      # skip Restricted Mode
 #     scripts/vscode_kernel_smoketest.sh --with-pixi-code   # alongside upstream
 #     scripts/vscode_kernel_smoketest.sh --no-vscode    # steps 1-6 only
@@ -52,6 +53,7 @@ set -euo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 STALLED=0
+MOVED=0
 TRUSTED=0
 WITH_PIXI_CODE=0
 LAUNCH_VSCODE=1
@@ -59,6 +61,7 @@ LAUNCH_VSCODE=1
 for arg in "$@"; do
     case "$arg" in
         --stalled)        STALLED=1 ;;
+        --moved)          MOVED=1 ;;
         --trusted)        TRUSTED=1 ;;
         --with-pixi-code) WITH_PIXI_CODE=1 ;;
         --no-vscode)      LAUNCH_VSCODE=0 ;;
@@ -130,12 +133,30 @@ EOF
 echo "    $FOLDER"
 
 echo "==> 3/7  pixi install (this is the slow one)"
-pixi install --manifest-path "$FOLDER/pixi.toml"
+if [ "$MOVED" -eq 1 ]; then
+    # Install at one path and then move the folder, exactly as a student does
+    # when they drag it out of Downloads afterwards. A pixi environment is not
+    # relocatable: absolute paths are baked into console scripts and kernelspecs
+    # at install time, so this leaves an environment whose interpreter still
+    # imports while `jupyter` and every kernel are broken.
+    ORIGINAL="$SANDBOX/downloads/course-folder"
+    mkdir -p "$SANDBOX/downloads"
+    mv "$FOLDER" "$ORIGINAL"
+    pixi install --manifest-path "$ORIGINAL/pixi.toml"
+    mv "$ORIGINAL" "$FOLDER"
+    echo "    installed at $ORIGINAL, then moved to $FOLDER"
+else
+    pixi install --manifest-path "$FOLDER/pixi.toml"
+fi
 
 PREFIX="$FOLDER/.pixi/envs/default"
 
 echo "==> 4/7  environment state"
-if [ "$STALLED" -eq 1 ]; then
+if [ "$MOVED" -eq 1 ]; then
+    echo "    folder was moved after installation; console scripts and kernelspecs"
+    echo "    still point at the old location"
+    echo "    shebang: $(head -1 "$PREFIX/bin/jupyter" 2>/dev/null || echo '(no jupyter script)')"
+elif [ "$STALLED" -eq 1 ]; then
     # This is the whole point of --stalled. An environment built by an older
     # pixi has no conda-meta/pixi, and deleting it reproduces that exactly.
     rm -f "$PREFIX/conda-meta/pixi"
@@ -249,7 +270,19 @@ cat <<EOF
   $((STEP + 2)). Open Output (bottom panel) and select 'Jupyter'. Restart the kernel and
      read the elapsed time between 'Restart requested' and 'Restarted'.
 EOF
-if [ "$STALLED" -eq 1 ]; then
+if [ "$MOVED" -eq 1 ]; then
+cat <<EOF
+
+     THIS RUN IS THE MOVED ONE. The interpreter will look fine and the cell may
+     even run, but selecting the kernel should fail to start it.
+
+  $((STEP + 3)). The extension should offer to REBUILD (not merely repair) this one. A
+     plain \`pixi install\` does not fix a moved environment: it refreshes pixi's
+     bookkeeping and leaves the baked-in paths untouched, so everything then
+     claims to be healthy while still being broken.
+  $((STEP + 4)). Accept, wait for the download, reload, and try the kernel again.
+EOF
+elif [ "$STALLED" -eq 1 ]; then
 cat <<EOF
 
      THIS RUN IS THE BROKEN ONE. Expect roughly 30 seconds, and a line saying

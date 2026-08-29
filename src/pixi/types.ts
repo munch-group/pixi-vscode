@@ -15,10 +15,16 @@ export interface PixiInfo {
 /**
  * Why an environment may not work correctly in VS Code.
  *
- * `missingPixiMarker` is the important one: it is the state that makes VS Code
- * classify a Pixi prefix as conda and stall Jupyter kernel starts by 30s.
+ * Two of these are the reason this extension exists:
+ *
+ * - `missingPixiMarker` makes VS Code classify a Pixi prefix as conda, which
+ *   stalls Jupyter kernel starts by 30s.
+ * - `relocated` means the folder was moved after `pixi install`. A Pixi
+ *   environment is not relocatable: console scripts and kernelspecs store
+ *   absolute paths, so the interpreter still imports but `jupyter` will not
+ *   start and the kernel dies the moment VS Code launches it.
  */
-export type EnvironmentHealth = 'healthy' | 'missingPixiMarker' | 'notInstalled' | 'noPython';
+export type EnvironmentHealth = 'healthy' | 'relocated' | 'missingPixiMarker' | 'notInstalled' | 'noPython';
 
 export interface PixiEnvironment {
     /** Stable identity — the environment prefix. */

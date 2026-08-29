@@ -48,6 +48,10 @@ export async function getPixiInfo(projectPath: string, token?: CancellationToken
 /**
  * Runs `pixi install`, which (re)writes `conda-meta/pixi` and so repairs an
  * environment that VS Code would otherwise misidentify as conda.
+ *
+ * It does NOT repair a relocated environment: absolute paths baked into console
+ * scripts and kernelspecs survive it untouched, and refreshing the markers only
+ * hides the problem. Use {@link pixiRebuild} for that.
  */
 export async function pixiInstall(
     manifestPath: string,
@@ -58,4 +62,23 @@ export async function pixiInstall(
         timeoutMs: 10 * 60_000,
         token,
     });
+}
+
+/**
+ * Deletes an environment and builds it again.
+ *
+ * The only way to fix a folder moved after `pixi install`. Deliberately
+ * separate from {@link pixiInstall}: this discards hundreds of megabytes and
+ * re-links the environment from scratch, so it is never run without asking.
+ */
+export async function pixiRebuild(
+    manifestPath: string,
+    environmentName: string,
+    token?: CancellationToken,
+): Promise<void> {
+    await runPixi(['clean', '--manifest-path', manifestPath, '--environment', environmentName], {
+        timeoutMs: 5 * 60_000,
+        token,
+    });
+    await pixiInstall(manifestPath, environmentName, token);
 }
