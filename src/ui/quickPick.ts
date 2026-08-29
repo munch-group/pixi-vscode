@@ -1,5 +1,6 @@
-import { QuickPickItem, QuickPickItemKind, ThemeIcon, Uri, window, workspace } from 'vscode';
+import { commands, QuickPickItem, QuickPickItemKind, ThemeIcon, Uri, window, workspace } from 'vscode';
 
+import { traceVerbose } from '../common/logging';
 import { PixiEnvironmentService } from '../environmentService';
 import { causesKernelStall, describeHealth, needsRebuild } from '../pixi/health';
 import { displayName, PixiEnvironment } from '../pixi/types';
@@ -51,7 +52,30 @@ export async function promptForEnvironment(service: PixiEnvironmentService): Pro
 
     if (picked?.environment) {
         await service.select(picked.environment, folder);
-        window.showInformationMessage(`Selected ${displayName(picked.environment)}.`);
+        window.setStatusBarMessage(`Selected ${displayName(picked.environment)}`, 4000);
+    }
+
+    await returnFocusToEditor();
+}
+
+/**
+ * Moves focus off the status bar after the picker closes.
+ *
+ * Clicking the pill focuses it, and VS Code shows a status bar item's tooltip on
+ * focus as well as on hover, so that keyboard users get it too. When the quick
+ * pick closes, focus is restored to whatever had it before — the pill — and the
+ * tooltip reappears with no pointer anywhere near it, staying up until
+ * something else is clicked.
+ *
+ * Nothing about the item itself can prevent that; the focus has to go
+ * somewhere else. Failure is ignored because this is a cosmetic tidy-up and
+ * there may be no editor to focus.
+ */
+async function returnFocusToEditor(): Promise<void> {
+    try {
+        await commands.executeCommand('workbench.action.focusActiveEditorGroup');
+    } catch (error) {
+        traceVerbose('Could not return focus to the editor:', error);
     }
 }
 
