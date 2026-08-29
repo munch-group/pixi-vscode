@@ -4,7 +4,7 @@
     "description": "Pixi support for Python and Jupyter in VS Code, without the kernel stall",
     "icon": "images/icon.png",
     "license": "MIT",
-    "version": "0.1.0",
+    "version": "0.1.1",
     "homepage": "https://github.com/munch-group/pixi-vscode",
     "repository": {
         "type": "git",
