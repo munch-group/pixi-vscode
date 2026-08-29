@@ -1,6 +1,7 @@
 import { commands, QuickPickItem, QuickPickItemKind, ThemeIcon, Uri, window, workspace } from 'vscode';
 
 import { traceVerbose } from '../common/logging';
+import { samePath } from '../common/utils';
 import { PixiEnvironmentService } from '../environmentService';
 import { causesKernelStall, describeHealth, needsRebuild } from '../pixi/health';
 import { displayName, PixiEnvironment } from '../pixi/types';
@@ -39,7 +40,7 @@ export async function promptForEnvironment(service: PixiEnvironmentService): Pro
                 causesKernelStall(env) || needsRebuild(env)
                     ? `$(warning) ${env.prefix} — ${describeHealth(env.health)}`
                     : env.prefix,
-            iconPath: new ThemeIcon(env.pythonPath === active ? 'check' : 'blank'),
+            iconPath: new ThemeIcon(samePath(env.pythonPath, active) ? 'check' : 'blank'),
             environment: env,
         });
     }

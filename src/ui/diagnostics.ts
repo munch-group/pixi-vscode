@@ -2,7 +2,7 @@ import * as fs from 'fs-extra';
 import * as path from 'path';
 import { extensions, LogOutputChannel, version as vscodeVersion, workspace } from 'vscode';
 
-import { JUPYTER_EXTENSION_ID, PYTHON_EXTENSION_ID } from '../common/utils';
+import { JUPYTER_EXTENSION_ID, PYTHON_EXTENSION_ID, samePath } from '../common/utils';
 import { PixiEnvironmentService } from '../environmentService';
 import { getPixiExecutable, getPixiVersion } from '../pixi/cli';
 import { describeHealth, PIXI_ENV_PREFIX_MARKER, PIXI_MARKER } from '../pixi/health';
@@ -77,7 +77,7 @@ export async function runDiagnostics(service: PixiEnvironmentService, log: LogOu
     for (const env of environments) {
         const hasPixiMarker = await fs.pathExists(path.join(env.prefix, PIXI_MARKER));
         const hasPrefixMarker = await fs.pathExists(path.join(env.prefix, PIXI_ENV_PREFIX_MARKER));
-        add(`${env.pythonPath === active ? '*' : ' '} ${displayName(env)}`);
+        add(`${samePath(env.pythonPath, active) ? '*' : ' '} ${displayName(env)}`);
         add(`    manifest:  ${env.manifestPath}`);
         add(`    prefix:    ${env.prefix}`);
         add(`    python:    ${env.pythonPath ?? 'not found'}`);

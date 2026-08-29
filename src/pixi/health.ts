@@ -2,7 +2,7 @@ import * as fs from 'fs-extra';
 import * as path from 'path';
 
 import { traceVerbose } from '../common/logging';
-import { canonicalPath } from '../common/utils';
+import { isInsidePath } from '../common/utils';
 import { EnvironmentHealth, PixiEnvironment } from './types';
 
 /**
@@ -39,14 +39,11 @@ async function isRelocated(prefix: string): Promise<boolean> {
     // Symlinks have to be resolved on both sides. On macOS a shebang records
     // /private/tmp/... for an environment VS Code and pixi both call /tmp/...,
     // and a plain string comparison then reports every such environment as
-    // moved. canonicalPath falls back to the original string when the path does
-    // not exist, which is exactly the relocated case and still compares
-    // correctly against the resolved prefix.
-    const root = canonicalPath(prefix);
-    const inside = (candidate: string) => {
-        const resolved = canonicalPath(candidate);
-        return resolved === root || resolved.startsWith(root.endsWith(path.sep) ? root : root + path.sep);
-    };
+    // moved. isInsidePath resolves both sides and falls back to the original
+    // string when a path does not exist, which is exactly the relocated case
+    // and still compares correctly against the resolved prefix. It also folds
+    // case on Windows, where the two sides routinely disagree about it.
+    const inside = (candidate: string) => isInsidePath(candidate, prefix);
 
     // 1. The kernelspec. Cross-platform, and it is precisely what Jupyter runs.
     try {

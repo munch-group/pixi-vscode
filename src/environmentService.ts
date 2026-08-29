@@ -13,7 +13,7 @@ import {
 
 import { traceError, traceInfo, traceVerbose, traceWarn } from './common/logging';
 import { getWorkspacePersistentState } from './common/persistentState';
-import { canonicalPath, CONFIG_SECTION, EXTENSION_ID } from './common/utils';
+import { comparablePath, CONFIG_SECTION, COURSE_PROJECT, EXTENSION_ID, isInsidePath, samePath } from './common/utils';
 import { pixiInstall, pixiRebuild } from './pixi/cli';
 import { discoverEnvironments } from './pixi/discovery';
 import { causesKernelStall, needsRebuild } from './pixi/health';
@@ -49,7 +49,7 @@ export class PixiEnvironmentService implements Disposable {
     }
 
     getEnvironmentsForFolder(folder: Uri): PixiEnvironment[] {
-        return this.environments.filter((env) => isInside(env.projectPath, folder.fsPath));
+        return this.environments.filter((env) => isInsidePath(env.projectPath, folder.fsPath));
     }
 
     async refresh(token?: CancellationToken): Promise<readonly PixiEnvironment[]> {
@@ -103,7 +103,7 @@ export class PixiEnvironmentService implements Disposable {
             }
 
             const active = await getActiveInterpreter(folder.uri);
-            if (active && canonicalPath(active) === canonicalPath(target.pythonPath ?? '')) {
+            if (active && samePath(active, target.pythonPath ?? '')) {
                 continue;
             }
 
@@ -129,7 +129,7 @@ export class PixiEnvironmentService implements Disposable {
         }
 
         const active = await getActiveInterpreter(folder.uri);
-        if (active && candidates.some((env) => canonicalPath(env.pythonPath ?? '') === canonicalPath(active))) {
+        if (active && candidates.some((env) => samePath(env.pythonPath ?? '', active))) {
             traceVerbose(`${folder.name} already uses a Pixi interpreter; leaving it alone`);
             return undefined;
         }
@@ -138,8 +138,8 @@ export class PixiEnvironmentService implements Disposable {
         // choose for the user when the intent is unambiguous: a project at the
         // folder root, or a single project inside it.
         const projectPaths = new Set(candidates.map((env) => env.projectPath));
-        const rootProject = canonicalPath(folder.uri.fsPath);
-        const hasRootProject = [...projectPaths].some((p) => canonicalPath(p) === rootProject);
+        const rootProject = comparablePath(folder.uri.fsPath);
+        const hasRootProject = [...projectPaths].some((p) => comparablePath(p) === rootProject);
 
         if (!hasRootProject && projectPaths.size > 1) {
             traceInfo(
@@ -150,7 +150,7 @@ export class PixiEnvironmentService implements Disposable {
         }
 
         const scoped = hasRootProject
-            ? candidates.filter((env) => canonicalPath(env.projectPath) === rootProject)
+            ? candidates.filter((env) => comparablePath(env.projectPath) === rootProject)
             : candidates;
 
         const state = await getWorkspacePersistentState();
@@ -192,7 +192,7 @@ export class PixiEnvironmentService implements Disposable {
             // If it already points at one of this project's environments, the
             // change was ours or the user's and either way it is correct.
             const mine = this.getEnvironmentsForFolder(folder.uri).filter((env) => env.pythonPath);
-            if (mine.some((env) => canonicalPath(env.pythonPath ?? '') === canonicalPath(event.path))) {
+            if (mine.some((env) => samePath(env.pythonPath ?? '', event.path))) {
                 return;
             }
 
@@ -247,7 +247,7 @@ export class PixiEnvironmentService implements Disposable {
         const selected = new Map<string, PixiEnvironment>();
         for (const folder of workspace.workspaceFolders ?? []) {
             const active = await getActiveInterpreter(folder.uri);
-            const match = active ? this.environments.find((env) => env.pythonPath === active) : undefined;
+            const match = active ? this.environments.find((env) => samePath(env.pythonPath, active)) : undefined;
             if (match) {
                 selected.set(match.id, match);
             }
@@ -438,8 +438,25 @@ export class PixiEnvironmentService implements Disposable {
      * without it this extension is simply overruled — which is why the default
      * is to write rather than ask.
      */
+    /**
+     * Whether a folder open in this window is the course project.
+     *
+     * Only the environments belonging to an open folder count: a project
+     * discovered somewhere else on the machine is not this window's business.
+     * See COURSE_PROJECT for why the settings-writing below is scoped at all.
+     */
+    private hasCourseProject(): boolean {
+        return (workspace.workspaceFolders ?? []).some((folder) =>
+            this.getEnvironmentsForFolder(folder.uri).some((env) => env.projectName === COURSE_PROJECT),
+        );
+    }
+
     async ensureEnvironmentOwnership(): Promise<void> {
         if (!isEnvsExtensionInstalled() || !isSettingUnset() || this.environments.length === 0) {
+            return;
+        }
+        if (!this.hasCourseProject()) {
+            traceVerbose(`No ${COURSE_PROJECT} project in this window; leaving its Python settings alone`);
             return;
         }
         if (!isDiscoveryDelegated() && !isTerminalActivationDelegated()) {
@@ -501,18 +518,4 @@ export class PixiEnvironmentService implements Disposable {
             await reclaimTerminalActivation(ConfigurationTarget.Global);
         }
     }
-}
-
-function isInside(candidate: string, parent: string): boolean {
-    const child = canonicalPath(candidate);
-    const root = canonicalPath(parent);
-
-    if (child === root) {
-        return true;
-    }
-    if (!child.startsWith(root)) {
-        return false;
-    }
-    const next = child[root.length];
-    return next === '/' || next === '\\';
 }

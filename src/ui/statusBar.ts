@@ -1,6 +1,6 @@
 import { Disposable, StatusBarAlignment, StatusBarItem, ThemeColor, window, workspace } from 'vscode';
 
-import { CONFIG_SECTION } from '../common/utils';
+import { CONFIG_SECTION, samePath } from '../common/utils';
 import { PixiEnvironmentService } from '../environmentService';
 import { causesKernelStall, needsRebuild } from '../pixi/health';
 import { displayName } from '../pixi/types';
@@ -86,7 +86,7 @@ export class PixiStatusBar implements Disposable {
         }
 
         const active = await getActiveInterpreter();
-        const current = environments.find((env) => env.pythonPath === active);
+        const current = environments.find((env) => samePath(env.pythonPath, active));
 
         if (!current) {
             return {
