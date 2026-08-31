@@ -6,6 +6,7 @@ import { setPersistentState } from './common/persistentState';
 import { PixiEnvironmentService } from './environmentService';
 import { getPixiVersion, MINIMUM_PIXI_VERSION, PixiNotFoundError } from './pixi/cli';
 import { getPythonApi } from './python/api';
+import { claimRunAsTask } from './python/runAsTask';
 import { runDiagnostics } from './ui/diagnostics';
 import { promptForEnvironment } from './ui/quickPick';
 import { PixiStatusBar } from './ui/statusBar';
@@ -19,6 +20,14 @@ export async function activate(context: ExtensionContext): Promise<void> {
     const service = new PixiEnvironmentService();
     const statusBar = new PixiStatusBar(service);
     context.subscriptions.push(service, statusBar);
+
+    // The Run menu's "Run as Task" entry, which the Python Environments
+    // extension contributes and then does not register a command for whenever
+    // a folder switches that extension off. Claimed here, before the awaits
+    // below, for the same reason the commands are: a student clicking it should
+    // meet a program running rather than "command not found", whatever else
+    // this window has failed to do.
+    context.subscriptions.push(claimRunAsTask());
 
     // Commands are registered before any await so they work even if the
     // environment check below fails — "Run Diagnostics" is most useful exactly
