@@ -4,7 +4,7 @@ import * as path from 'path';
 import { CancellationToken, Uri, workspace } from 'vscode';
 
 import { findPythonExecutable } from '../common/findPython';
-import { traceError, traceVerbose } from '../common/logging';
+import { traceError, traceVerbose, traceWarn } from '../common/logging';
 import { CONFIG_SECTION } from '../common/utils';
 import { getPixiInfo } from './cli';
 import { assessHealth } from './health';
@@ -77,6 +77,111 @@ async function readPythonVersion(prefix: string): Promise<string | undefined> {
     return undefined;
 }
 
+const SECTION_HEADER = /^\s*\[([^\]]+)\]\s*$/;
+const NAME_ENTRY = /^\s*name\s*=\s*["']([^"']*)["']/;
+
+/** The project name as the manifest declares it, without running Pixi. */
+async function readProjectName(manifestPath: string): Promise<string | undefined> {
+    let contents: string;
+    try {
+        contents = await fs.readFile(manifestPath, 'utf-8');
+    } catch (error) {
+        traceVerbose(`Could not read ${manifestPath}:`, error);
+        return undefined;
+    }
+
+    let section = '';
+    for (const line of contents.split(/\r?\n/)) {
+        const header = line.match(SECTION_HEADER);
+        if (header) {
+            section = header[1].trim();
+            continue;
+        }
+        if (!/^(?:tool\.pixi\.)?(?:workspace|project)$/.test(section)) {
+            continue;
+        }
+        const name = line.match(NAME_ENTRY);
+        if (name?.[1]) {
+            return name[1];
+        }
+    }
+    return undefined;
+}
+
+async function findManifest(projectPath: string): Promise<string | undefined> {
+    for (const name of MANIFEST_NAMES) {
+        const candidate = path.join(projectPath, name);
+        if (await fs.pathExists(candidate)) {
+            return candidate;
+        }
+    }
+    return undefined;
+}
+
+/**
+ * Reads the environments straight off disk, for when `pixi` cannot be run.
+ *
+ * Everything this extension needs about an environment is already in the
+ * folder: the prefix is `.pixi/envs/<name>`, the interpreter is inside it, the
+ * Python version is in `conda-meta`, and health is three file checks. Only the
+ * project name has to come out of the manifest, and that is one line of TOML.
+ *
+ * This is what keeps a Dock-launched VS Code working. An application started
+ * from the Dock on a Mac inherits none of the shell's PATH, so `pixi` is not
+ * findable unless its full path has been written into settings — and giving up
+ * there left a student with no interpreter and no kernel, on a folder whose
+ * environment was sitting perfectly well installed a few directories down.
+ *
+ * What is lost without the command is repair: `pixi install` and `pixi clean`
+ * are how a degraded or relocated environment is put right, and those really do
+ * need the executable. Reporting the environments is not repairing them.
+ */
+async function readEnvironmentsFromDisk(projectPath: string): Promise<PixiEnvironment[]> {
+    const manifestPath = await findManifest(projectPath);
+    if (!manifestPath) {
+        return [];
+    }
+
+    const envsDir = path.join(projectPath, '.pixi', 'envs');
+    let entries: string[];
+    try {
+        entries = await fs.readdir(envsDir);
+    } catch {
+        traceVerbose(`No environments installed under ${envsDir}`);
+        return [];
+    }
+
+    const projectName = (await readProjectName(manifestPath)) ?? path.basename(projectPath);
+    const environments: PixiEnvironment[] = [];
+
+    for (const name of entries) {
+        const prefix = path.join(envsDir, name);
+        try {
+            if (!(await fs.stat(prefix)).isDirectory()) {
+                continue;
+            }
+        } catch {
+            continue;
+        }
+
+        const pythonPath = (await findPythonExecutable(prefix)) ?? undefined;
+        environments.push({
+            id: prefix,
+            name,
+            projectName,
+            manifestPath,
+            projectPath,
+            prefix,
+            pythonPath,
+            pythonVersion: await readPythonVersion(prefix),
+            health: await assessHealth(prefix, pythonPath),
+        });
+    }
+
+    traceVerbose(`Read ${environments.length} environment(s) from ${envsDir}`);
+    return environments;
+}
+
 export async function getEnvironmentsForProject(
     projectPath: string,
     token?: CancellationToken,
@@ -85,8 +190,8 @@ export async function getEnvironmentsForProject(
     try {
         info = await getPixiInfo(projectPath, token);
     } catch (error) {
-        traceError(`Failed to read Pixi info for ${projectPath}:`, error);
-        return [];
+        traceWarn(`Could not ask Pixi about ${projectPath}; reading the folder instead:`, error);
+        return readEnvironmentsFromDisk(projectPath);
     }
 
     if (!info.project_info) {

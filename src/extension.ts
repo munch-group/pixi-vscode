@@ -1,7 +1,7 @@
 import semver from 'semver';
 import { commands, ExtensionContext, window, workspace } from 'vscode';
 
-import { registerLogger, traceError, traceInfo } from './common/logging';
+import { registerLogger, traceError, traceInfo, traceWarn } from './common/logging';
 import { setPersistentState } from './common/persistentState';
 import { PixiEnvironmentService } from './environmentService';
 import { getPixiVersion, MINIMUM_PIXI_VERSION, PixiNotFoundError } from './pixi/cli';
@@ -47,9 +47,14 @@ export async function activate(context: ExtensionContext): Promise<void> {
         workspace.onDidChangeWorkspaceFolders(() => void service.refresh()),
     );
 
-    if (!(await checkPixiVersion())) {
-        return;
-    }
+    // Whether Pixi itself can be run, which is no longer a condition of doing
+    // anything. Discovery falls back to reading `.pixi/envs`, and that is the
+    // whole of what selecting an interpreter needs; only repairing an
+    // environment has to shell out. Returning here instead — which is what this
+    // did — meant a VS Code started from the Dock, inheriting no PATH and so
+    // unable to find pixi, selected no interpreter and offered no kernel, on a
+    // folder where the environment was installed and working.
+    const pixiProblem = await checkPixi();
 
     try {
         await getPythonApi();
@@ -67,49 +72,62 @@ export async function activate(context: ExtensionContext): Promise<void> {
     context.subscriptions.push(await service.guardStartupSelection(15_000));
     await statusBar.update();
 
+    // Said out loud only when it actually cost something. A student whose
+    // environment was found anyway does not need a warning about a command they
+    // have installed and that works in their terminal.
+    if (pixiProblem && service.getEnvironments().length === 0) {
+        window.showWarningMessage(pixiProblem);
+    }
+
     // The remaining steps each await a notification the user may never answer,
     // so they must not sit in the activation path — selecting the interpreter
     // would be blocked behind an unanswered dialog.
     void (async () => {
-        await service.repairDegradedEnvironments();
-        await service.rebuildRelocatedEnvironments();
-        // A repair changes which environments are usable, so re-select.
-        await service.autoSelect();
+        if (!pixiProblem) {
+            // Both repairs run `pixi install`, so they are the one thing that
+            // genuinely cannot be done without the command.
+            await service.repairDegradedEnvironments();
+            await service.rebuildRelocatedEnvironments();
+            // A repair changes which environments are usable, so re-select.
+            await service.autoSelect();
+        }
         await service.ensureEnvironmentOwnership();
         await statusBar.update();
     })();
 }
 
 /**
- * Reports a missing or too-old Pixi without throwing, so the extension stays
- * loaded and its diagnostics command remains reachable.
+ * Describes what is wrong with Pixi on this machine, or undefined when nothing
+ * is.
+ *
+ * It reports rather than decides, and never shows the message itself: whether a
+ * missing Pixi is worth interrupting a student over depends on whether the
+ * environments were found without it, which is not known yet here.
  */
-async function checkPixiVersion(): Promise<boolean> {
+async function checkPixi(): Promise<string | undefined> {
     let version: string | undefined;
     try {
         version = await getPixiVersion();
     } catch (error) {
         if (error instanceof PixiNotFoundError) {
-            window.showWarningMessage(error.message);
-        } else {
-            traceError('Could not determine the Pixi version:', error);
-            window.showWarningMessage('Could not run Pixi. Run "Pixi: Run Diagnostics" for details.');
+            traceWarn(error.message);
+            return error.message;
         }
-        return false;
+        traceError('Could not determine the Pixi version:', error);
+        return 'Could not run Pixi. Run "Pixi: Run Diagnostics" for details.';
     }
 
     if (!version) {
-        window.showWarningMessage('Could not parse the Pixi version. Run "Pixi: Run Diagnostics" for details.');
-        return false;
+        traceWarn('Could not parse the Pixi version.');
+        return 'Could not parse the Pixi version. Run "Pixi: Run Diagnostics" for details.';
     }
 
     if (!semver.gte(version, MINIMUM_PIXI_VERSION)) {
-        window.showWarningMessage(
-            `Pixi ${version} is too old; ${MINIMUM_PIXI_VERSION} or newer is required. Run \`pixi self-update\`.`,
-        );
-        return false;
+        const message = `Pixi ${version} is too old; ${MINIMUM_PIXI_VERSION} or newer is required. Run \`pixi self-update\`.`;
+        traceWarn(message);
+        return message;
     }
 
     traceInfo(`Using Pixi ${version}`);
-    return true;
+    return undefined;
 }
