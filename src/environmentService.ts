@@ -13,10 +13,11 @@ import {
 
 import { traceError, traceInfo, traceVerbose, traceWarn } from './common/logging';
 import { getWorkspacePersistentState } from './common/persistentState';
+import { startLiveProgress } from './common/progress';
 import { comparablePath, CONFIG_SECTION, COURSE_PROJECT, EXTENSION_ID, isInsidePath, samePath } from './common/utils';
 import { pixiInstall, pixiRebuild } from './pixi/cli';
 import { discoverEnvironments } from './pixi/discovery';
-import { causesKernelStall, needsRebuild } from './pixi/health';
+import { causesKernelStall, countLinkedPackages, isNonPythonEnvironment, needsRebuild } from './pixi/health';
 import { displayName, PixiEnvironment, qualifiedName } from './pixi/types';
 import { getActiveInterpreter, getPythonApi, refreshInterpreters, setActiveInterpreter } from './python/api';
 import {
@@ -76,7 +77,14 @@ export class PixiEnvironmentService implements Disposable {
      */
     async select(env: PixiEnvironment, folder: Uri): Promise<void> {
         if (!env.pythonPath) {
-            window.showErrorMessage(`${displayName(env)} has no Python interpreter. Run \`pixi install\` first.`);
+            // Two different absences, and they need different advice. Telling
+            // someone to install an environment that `pixi install` has just
+            // finished installing is worse than saying nothing at all.
+            window.showErrorMessage(
+                isNonPythonEnvironment(env)
+                    ? `${displayName(env)} contains no Python, so it cannot be used as an interpreter.`
+                    : `${displayName(env)} is not installed. Run \`pixi install\` first.`,
+            );
             return;
         }
 
@@ -312,23 +320,32 @@ export class PixiEnvironmentService implements Disposable {
 
     private async runRepair(broken: PixiEnvironment[]): Promise<void> {
         const failures: string[] = [];
+        let cancelled = false;
 
         await window.withProgress(
-            { location: ProgressLocation.Notification, title: 'Repairing Pixi environments', cancellable: true },
+            { location: ProgressLocation.Notification, title: `Repairing ${this.describe(broken)}`, cancellable: true },
             async (progress, token) => {
                 for (const [index, env] of broken.entries()) {
                     if (token.isCancellationRequested) {
                         return;
                     }
-                    progress.report({
-                        message: `${displayName(env)} (${index + 1}/${broken.length})`,
-                        increment: index === 0 ? 0 : 100 / broken.length,
+                    // No package count here: the environment is already
+                    // complete, so `pixi install` only rewrites the marker and
+                    // the counter would read 100% from the first tick.
+                    const ticker = startLiveProgress(progress, {
+                        activity: `${this.step(index, broken)}Running pixi install`,
                     });
                     try {
                         await pixiInstall(env.manifestPath, env.name, token);
                     } catch (error) {
+                        if (token.isCancellationRequested) {
+                            cancelled = true;
+                            return;
+                        }
                         traceError(`Failed to repair ${displayName(env)}:`, error);
                         failures.push(displayName(env));
+                    } finally {
+                        ticker.dispose();
                     }
                 }
             },
@@ -339,10 +356,12 @@ export class PixiEnvironmentService implements Disposable {
         await refreshInterpreters();
         await this.refresh();
 
-        if (failures.length > 0) {
+        if (cancelled) {
+            window.showWarningMessage('Repair cancelled.');
+        } else if (failures.length > 0) {
             window.showErrorMessage(`Could not repair: ${failures.join(', ')}. See the Pixi output channel.`);
         } else {
-            window.showInformationMessage(`Repaired ${broken.length} Pixi environment(s).`);
+            window.showInformationMessage(`Repaired ${this.describe(broken)}.`);
         }
     }
 
@@ -390,23 +409,51 @@ export class PixiEnvironmentService implements Disposable {
             return;
         }
 
+        await this.runRebuild(moved);
+    }
+
+    private async runRebuild(moved: PixiEnvironment[]): Promise<void> {
         const failures: string[] = [];
+        let cancelled = false;
         await window.withProgress(
-            { location: ProgressLocation.Notification, title: 'Rebuilding Pixi environments', cancellable: true },
+            { location: ProgressLocation.Notification, title: `Rebuilding ${this.describe(moved)}`, cancellable: true },
             async (progress, token) => {
                 for (const [index, env] of moved.entries()) {
                     if (token.isCancellationRequested) {
                         return;
                     }
-                    progress.report({
-                        message: `${qualifiedName(env, this.environments)} (${index + 1}/${moved.length})`,
-                        increment: index === 0 ? 0 : 100 / moved.length,
-                    });
+
+                    // Counted before `pixi clean` deletes it. The lock file is
+                    // unchanged, so what is linked now is what will be linked
+                    // again, which turns the reinstall into a real percentage.
+                    const total = await countLinkedPackages(env.prefix);
+                    const step = this.step(index, moved);
+                    let ticker: Disposable | undefined;
+
                     try {
-                        await pixiRebuild(env.manifestPath, env.name, token);
+                        await pixiRebuild(env.manifestPath, env.name, token, (phase) => {
+                            ticker?.dispose();
+                            ticker =
+                                phase === 'clean'
+                                    ? startLiveProgress(progress, {
+                                          activity: `${step}Removing the old environment`,
+                                      })
+                                    : startLiveProgress(progress, {
+                                          activity: `${step}Downloading and installing packages`,
+                                          poll: () => countLinkedPackages(env.prefix),
+                                          total,
+                                          weight: 100 / moved.length,
+                                      });
+                        });
                     } catch (error) {
+                        if (token.isCancellationRequested) {
+                            cancelled = true;
+                            return;
+                        }
                         traceError(`Failed to rebuild ${qualifiedName(env, this.environments)}:`, error);
                         failures.push(qualifiedName(env, this.environments));
+                    } finally {
+                        ticker?.dispose();
                     }
                 }
             },
@@ -416,10 +463,58 @@ export class PixiEnvironmentService implements Disposable {
         await this.refresh();
         await this.autoSelect();
 
-        if (failures.length > 0) {
+        if (cancelled) {
+            // Said plainly, because a cancelled rebuild is worse than no
+            // rebuild: the old environment has already been deleted, and the
+            // half-installed one that is left will not run anything.
+            window.showWarningMessage(
+                'Rebuild cancelled. The environment is now incomplete — run "Pixi: Repair Environments" to finish it.',
+            );
+        } else if (failures.length > 0) {
             window.showErrorMessage(`Could not rebuild: ${failures.join(', ')}. See the Pixi output channel.`);
         } else {
-            window.showInformationMessage(`Rebuilt ${moved.length} Pixi environment(s).`);
+            window.showInformationMessage(`Rebuilt ${this.describe(moved)}.`);
+        }
+    }
+
+    /**
+     * Names one environment, counts several.
+     *
+     * Both are real: the status bar pill always fixes exactly the one it was
+     * drawn for, while "Pixi: Repair Environments" and a multi-root workspace
+     * can each turn up more than one. Naming the single environment is worth
+     * more than a plural-agnostic "1 environment(s)" — it is the confirmation
+     * that the thing that was broken is the thing that was fixed.
+     */
+    private describe(environments: PixiEnvironment[]): string {
+        return environments.length === 1
+            ? qualifiedName(environments[0], this.environments)
+            : `${environments.length} Pixi environments`;
+    }
+
+    /** "(2/3) " while working through several, nothing at all for one. */
+    private step(index: number, environments: PixiEnvironment[]): string {
+        return environments.length > 1 ? `(${index + 1}/${environments.length}) ` : '';
+    }
+
+    /**
+     * Runs the right fix for each of the given environments, asking nothing.
+     *
+     * For callers that have already put the question to the user themselves —
+     * the status bar pill does. The two fixes are not interchangeable: a moved
+     * environment has to be deleted and re-downloaded, and a plain reinstall
+     * would leave it broken while making it look repaired, because
+     * `pixi install` rewrites the marker either way.
+     */
+    async fixEnvironments(environments: readonly PixiEnvironment[]): Promise<void> {
+        const moved = environments.filter(needsRebuild);
+        const degraded = environments.filter((env) => !needsRebuild(env) && causesKernelStall(env));
+
+        if (moved.length > 0) {
+            await this.runRebuild(moved);
+        }
+        if (degraded.length > 0) {
+            await this.runRepair(degraded);
         }
     }
 

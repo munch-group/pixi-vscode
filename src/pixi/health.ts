@@ -140,14 +140,56 @@ export async function assessHealth(prefix: string, pythonPath: string | undefine
     if (!(await fs.pathExists(path.join(prefix, PIXI_MARKER)))) {
         return 'missingPixiMarker';
     }
+    // Last, and so the weakest claim of the five: everything above says the
+    // environment is completely installed — the prefix is there, it has not
+    // moved, and it carries the marker `pixi install` writes when it finishes.
+    // An environment in that state with no Python in it is not broken; it is a
+    // Pixi environment for something other than Python. See
+    // isNonPythonEnvironment.
     if (!pythonPath) {
         return 'noPython';
     }
     return 'healthy';
 }
 
+/**
+ * How many packages are linked into a prefix.
+ *
+ * `conda-meta` holds one JSON file per installed package — the markers above
+ * are not JSON, and neither is `history` — so counting them while
+ * `pixi install` runs is a live measure of how far it has got.
+ *
+ * Undefined when the directory cannot be read, which includes the moment during
+ * `pixi clean` when it does not exist.
+ */
+export async function countLinkedPackages(prefix: string): Promise<number | undefined> {
+    try {
+        const entries = await fs.readdir(path.join(prefix, 'conda-meta'));
+        return entries.filter((entry) => entry.endsWith('.json')).length;
+    } catch {
+        return undefined;
+    }
+}
+
 export function isDegraded(env: PixiEnvironment): boolean {
     return env.health !== 'healthy';
+}
+
+/**
+ * True when the environment is complete and simply contains no Python.
+ *
+ * Perfectly ordinary: a manifest can ask for node, or a compiler, and nothing
+ * else — this extension's own `pixi.toml` asks for nodejs. There is nothing to
+ * repair and nothing to select, so the picker and the status bar leave such an
+ * environment out rather than offering a choice that fails when it is taken.
+ *
+ * Distinct from an environment that has no Python because it is not installed,
+ * which `pixi install` does fix. `assessHealth` separates the two: it only
+ * reaches `noPython` for a prefix that exists, has not been moved, and carries
+ * the marker written at the end of a successful install.
+ */
+export function isNonPythonEnvironment(env: PixiEnvironment): boolean {
+    return env.health === 'noPython';
 }
 
 /** True when the environment will trigger the 30-second Jupyter kernel stall. */
@@ -171,6 +213,6 @@ export function describeHealth(health: EnvironmentHealth): string {
         case 'notInstalled':
             return 'not installed — run `pixi install`';
         case 'noPython':
-            return 'no Python interpreter found in the environment';
+            return 'installed, but contains no Python — it cannot back an interpreter or a kernel';
     }
 }

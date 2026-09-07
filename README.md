@@ -48,6 +48,8 @@ killed after 30 s.
   follow automatically
 - **Detects and repairs** environments missing `conda-meta/pixi`, which is what causes the stall
 - **Detects a moved or copied course folder** and offers to rebuild it — see below
+- **Shows the state in the status bar**, and a red pill is the repair itself: clicking it explains what is wrong
+  with the active environment and offers the fix as a button, rather than opening the interpreter picker
 - **Reports** the whole picture via `Pixi: Run Diagnostics`, including any orphaned `pixi shell` processes
 - **Never leaks processes**: subprocesses run with stdin closed and are killed by process _group_ on timeout
 

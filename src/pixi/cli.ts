@@ -5,6 +5,9 @@ import { CONFIG_SECTION, untildify } from '../common/utils';
 import { RunOptions, runProcess } from '../process/run';
 import { PixiInfo } from './types';
 
+/** The two commands a rebuild runs, in order. */
+export type RebuildPhase = 'clean' | 'install';
+
 /** Oldest Pixi we are willing to drive. */
 export const MINIMUM_PIXI_VERSION = '0.53.0';
 
@@ -70,15 +73,22 @@ export async function pixiInstall(
  * The only way to fix a folder moved after `pixi install`. Deliberately
  * separate from {@link pixiInstall}: this discards hundreds of megabytes and
  * re-links the environment from scratch, so it is never run without asking.
+ *
+ * `onPhase` is called as each of the two commands starts. The caller needs it
+ * because neither prints anything to a pipe, so the phase is the only thing
+ * there is to report while several minutes pass.
  */
 export async function pixiRebuild(
     manifestPath: string,
     environmentName: string,
     token?: CancellationToken,
+    onPhase?: (phase: RebuildPhase) => void,
 ): Promise<void> {
+    onPhase?.('clean');
     await runPixi(['clean', '--manifest-path', manifestPath, '--environment', environmentName], {
         timeoutMs: 5 * 60_000,
         token,
     });
+    onPhase?.('install');
     await pixiInstall(manifestPath, environmentName, token);
 }

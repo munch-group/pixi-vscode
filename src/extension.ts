@@ -9,6 +9,7 @@ import { getPythonApi } from './python/api';
 import { claimRunAsTask } from './python/runAsTask';
 import { runDiagnostics } from './ui/diagnostics';
 import { promptForEnvironment } from './ui/quickPick';
+import { promptToFixEnvironment } from './ui/repairPrompt';
 import { PixiStatusBar } from './ui/statusBar';
 
 export async function activate(context: ExtensionContext): Promise<void> {
@@ -42,6 +43,11 @@ export async function activate(context: ExtensionContext): Promise<void> {
             await service.repairDegradedEnvironments(true);
             await service.rebuildRelocatedEnvironments(true);
         }),
+        // Not in the palette: it is the status bar pill's click target, and it
+        // needs the environment id the pill was drawn for to say anything useful.
+        commands.registerCommand('im-pixi-vscode.fixEnvironment', (environmentId?: string) =>
+            promptToFixEnvironment(service, environmentId),
+        ),
         commands.registerCommand('im-pixi-vscode.runDiagnostics', () => runDiagnostics(service, log)),
         commands.registerCommand('im-pixi-vscode.showLogs', () => log.show()),
         workspace.onDidChangeWorkspaceFolders(() => void service.refresh()),

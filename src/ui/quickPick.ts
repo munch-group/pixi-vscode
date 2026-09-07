@@ -3,7 +3,7 @@ import { commands, QuickPickItem, QuickPickItemKind, ThemeIcon, Uri, window, wor
 import { traceVerbose } from '../common/logging';
 import { samePath } from '../common/utils';
 import { PixiEnvironmentService } from '../environmentService';
-import { causesKernelStall, describeHealth, needsRebuild } from '../pixi/health';
+import { causesKernelStall, describeHealth, isNonPythonEnvironment, needsRebuild } from '../pixi/health';
 import { displayName, PixiEnvironment } from '../pixi/types';
 import { getActiveInterpreter } from '../python/api';
 
@@ -24,11 +24,22 @@ export async function promptForEnvironment(service: PixiEnvironmentService): Pro
         return;
     }
 
+    // An environment that contains no Python cannot become the interpreter, so
+    // listing it only leads to an entry that fails when it is picked. One that
+    // is merely not installed yet stays: `pixi info` reports every environment
+    // the manifest declares, and choosing one is how the user finds out it needs
+    // installing.
+    const selectable = environments.filter((env) => !isNonPythonEnvironment(env));
+    if (selectable.length === 0) {
+        window.showErrorMessage(`No Pixi environment in ${folder.fsPath} contains a Python interpreter.`);
+        return;
+    }
+
     const active = await getActiveInterpreter(folder);
     const items: EnvironmentItem[] = [];
     let lastProject: string | undefined;
 
-    for (const env of environments) {
+    for (const env of selectable) {
         if (env.projectName !== lastProject) {
             items.push({ label: env.projectName, kind: QuickPickItemKind.Separator });
             lastProject = env.projectName;
@@ -72,7 +83,7 @@ export async function promptForEnvironment(service: PixiEnvironmentService): Pro
  * somewhere else. Failure is ignored because this is a cosmetic tidy-up and
  * there may be no editor to focus.
  */
-async function returnFocusToEditor(): Promise<void> {
+export async function returnFocusToEditor(): Promise<void> {
     try {
         await commands.executeCommand('workbench.action.focusActiveEditorGroup');
     } catch (error) {

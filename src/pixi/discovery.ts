@@ -229,8 +229,13 @@ export async function discoverEnvironments(token?: CancellationToken): Promise<P
     const envLists = await Promise.all(projects.map((project) => getEnvironmentsForProject(project, token)));
     const environments = envLists.flat();
 
-    // Environments without Python cannot back an interpreter or a kernel.
-    return environments
-        .filter((env) => env.pythonPath !== undefined || env.health !== 'healthy')
-        .sort((a, b) => a.projectName.localeCompare(b.projectName) || a.name.localeCompare(b.name));
+    // Everything found is reported, Python or not. There used to be a filter
+    // here meaning to drop environments that cannot back an interpreter, and it
+    // never dropped one: assessHealth returns 'noPython' — never 'healthy' —
+    // for exactly those, so its second clause was true whenever the first was
+    // false. Deciding what to do with them belongs to the callers anyway, and
+    // they do not agree: the picker and the status bar leave a Python-less
+    // environment out, while the relocation warning and the diagnostics report
+    // need it.
+    return environments.sort((a, b) => a.projectName.localeCompare(b.projectName) || a.name.localeCompare(b.name));
 }
